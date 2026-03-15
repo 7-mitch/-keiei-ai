@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  name         String    @db.VarChar(100)
+  email        String    @unique @db.VarChar(255)
+  role         String    @default("operator") @db.VarChar(20)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  accounts  Account[]
+  auditLogs AuditLog[]
+  reports   Report[]
+
+  @@map("users")
+}
+
+model Account {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  accountType String   @map("account_type") @db.VarChar(20)
+  balance     Decimal  @db.Decimal(15, 2)
+  currency    String   @default("JPY") @db.VarChar(3)
+  status      String   @default("active") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  @@map("accounts")
+}
+
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  accountId       Int      @map("account_id")
+  amount          Decimal  @db.Decimal(15, 2)
+  transactionType String   @map("transaction_type") @db.VarChar(10)
+  description     String?  @db.VarChar(500)
+  isFlagged       Boolean  @default(false) @map("is_flagged")
+  flagReason      String?  @map("flag_reason") @db.VarChar(500)
+  riskScore       Decimal? @map("risk_score") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  account   Account    @relation(fields: [accountId], references: [id])
+  auditLogs AuditLog[]
+
+  @@map("transactions")
+}
+
+model KpiMetric {
+  id          Int      @id @default(autoincrement())
+  metricName  String   @map("metric_name") @db.VarChar(100)
+  metricValue Decimal  @map("metric_value") @db.Decimal(20, 4)
+  unit        String   @db.VarChar(20)
+  period      String   @db.VarChar(20)
+  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+
+  @@map("kpi_metrics")
+}
+
+model FraudAlert {
+  id            Int       @id @default(autoincrement())
+  transactionId Int?      @map("transaction_id")
+  accountId     Int?      @map("account_id")
+  alertType     String    @map("alert_type") @db.VarChar(50)
+  severity      String    @db.VarChar(20)
+  description   String    @db.Text
+  aiReasoning   String?   @map("ai_reasoning") @db.Text
+  status        String    @default("open") @db.VarChar(20)
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("fraud_alerts")
+}
+
+model AuditLog {
+  id           BigInt   @id @default(autoincrement())
+  operatorId   Int?     @map("operator_id")
+  operatorType String   @map("operator_type") @db.VarChar(20)
+  targetType   String   @map("target_type") @db.VarChar(50)
+  targetId     Int      @map("target_id")
+  action       String   @db.VarChar(100)
+  beforeValue  Json?    @map("before_value")
+  afterValue   Json?    @map("after_value")
+  reason       String?  @db.Text
+  aiConfidence Decimal? @map("ai_confidence") @db.Decimal(5, 2)
+  sessionId    String?  @map("session_id") @db.VarChar(100)
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  operator    User?        @relation(fields: [operatorId], references: [id])
+  transaction Transaction? @relation(fields: [targetId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Report {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(200)
+  reportType  String   @map("report_type") @db.VarChar(50)
+  content     Json
+  generatedBy Int      @map("generated_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  generator User @relation(fields: [generatedBy], references: [id])
+
+  @@map("reports")
+}
+
+model WebCollectionLog {
+  id          Int      @id @default(autoincrement())
+  url         String   @db.VarChar(500)
+  status      String   @db.VarChar(20)
+  dataType    String   @map("data_type") @db.VarChar(50)
+  rawContent  String?  @map("raw_content") @db.Text
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz
+
+  @@map("web_collection_logs")
+}

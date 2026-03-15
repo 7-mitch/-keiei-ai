@@ -1,0 +1,52 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.db.connection import init_db, close_db
+from app.api import chat, alert, report, auth
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ===== 起動時 =====
+    print("🚀 KEIEI-AI 起動中...")
+    await init_db()
+    print("✅ 起動完了")
+    yield
+    # ===== 終了時 =====
+    print("🛑 KEIEI-AI 終了中...")
+    await close_db()
+    print("✅ 終了完了")
+
+app = FastAPI(
+    title       = "KEIEI-AI",
+    description = "経営者支援AIシステム（LangGraph + FastAPI）",
+    version     = "1.0.0",
+    lifespan    = lifespan,
+    # 本番環境ではSwagger UIを非表示
+    docs_url    = "/docs"  if settings.environment == "development" else None,
+    redoc_url   = "/redoc" if settings.environment == "development" else None,
+)
+
+# ===== CORS設定 =====
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins     = settings.allowed_origins,
+    allow_credentials = True,
+    allow_methods     = ["*"],
+    allow_headers     = ["*"],
+)
+
+# ===== ルーター登録 =====
+app.include_router(auth.router,   prefix="/api/auth",   tags=["認証"])
+app.include_router(chat.router,   prefix="/api/chat",   tags=["チャット"])
+app.include_router(alert.router,  prefix="/api/alert",  tags=["アラート"])
+app.include_router(report.router, prefix="/api/report", tags=["レポート"])
+
+# ===== ヘルスチェック =====
+@app.get("/health", tags=["システム"])
+async def health():
+    return {
+        "status":  "ok",
+        "env":     settings.environment,
+        "version": "1.0.0",
+    }
