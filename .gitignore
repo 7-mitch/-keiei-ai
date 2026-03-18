@@ -1,1 +1,45 @@
-node_modules
+# 環境変数（絶対にpushしない）
+.env
+.env.local
+.env.production
+*.pem
+certs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node.js
+node_modules/
+.next/
+dist/
+
+# DB
+*.db
+*.sqlite
+
+# AIモデル
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# ログ
+logs/
+*.log
+screenshots/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS
+terraform.tfstate
+.terraform/
