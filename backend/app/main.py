@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.connection import init_db, close_db
-from app.api import chat, alert, report, auth
+from app.api import chat, alert, report, auth, fraud
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,7 +22,6 @@ app = FastAPI(
     description = "経営者支援AIシステム（LangGraph + FastAPI）",
     version     = "1.0.0",
     lifespan    = lifespan,
-    # 本番環境ではSwagger UIを非表示
     docs_url    = "/docs"  if settings.environment == "development" else None,
     redoc_url   = "/redoc" if settings.environment == "development" else None,
 )
@@ -41,6 +40,7 @@ app.include_router(auth.router,   prefix="/api/auth",   tags=["認証"])
 app.include_router(chat.router,   prefix="/api/chat",   tags=["チャット"])
 app.include_router(alert.router,  prefix="/api/alert",  tags=["アラート"])
 app.include_router(report.router, prefix="/api/report", tags=["レポート"])
+app.include_router(fraud.router,  prefix="/api/fraud",  tags=["不正検知"])
 
 # ===== ヘルスチェック =====
 @app.get("/health", tags=["システム"])

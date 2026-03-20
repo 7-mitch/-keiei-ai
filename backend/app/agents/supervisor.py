@@ -1,9 +1,14 @@
-from typing import TypedDict, Literal
+"""
+#93 Supervisorエージェント（完全版）
+質問を分析して最適なエージェントに振り分ける
+"""
+from typing import TypedDict
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
+from typing import Literal
 from app.core.config import settings
 
 # ===== State定義 =====
@@ -16,9 +21,9 @@ class SupervisorState(TypedDict):
 
 # ===== LLM =====
 llm = ChatAnthropic(
-    model      = "claude-sonnet-4-20250514",
+    model       = "claude-sonnet-4-20250514",
     temperature = 0,
-    api_key    = settings.anthropic_api_key,
+    api_key     = settings.anthropic_api_key,
 )
 
 # ===== ルーティング判断 =====
@@ -35,16 +40,16 @@ def route_question(state: SupervisorState) -> dict:
 質問を分析して最適なエージェントを選んでください:
 
 - sql:     DB内のデータ集計・検索
-           例: 売上・取引件数・ユーザー数・残高
+           例: 売上・取引件数・ユーザー数・残高・KPI
 
 - rag:     審査規程・社内文書・ルールの検索
-           例: 審査基準・コンプライアンス・規則
+           例: 審査基準・コンプライアンス・規則・手順
 
 - fraud:   不正検知・リスク分析・アラート確認
-           例: 不正フラグ・異常取引・リスクスコア
+           例: 不正フラグ・異常取引・リスクスコア・アラート
 
 - web:     最新の市場情報・競合・ニュース収集
-           例: 金利動向・競合他社・市場データ
+           例: 金利動向・競合他社・市場データ・ニュース
 
 - general: 上記に当てはまらない一般的な質問
         """),
@@ -60,20 +65,30 @@ async def execute_agent(state: SupervisorState) -> dict:
     question   = state["question"]
     session_id = state["session_id"]
 
-    # #93以降で各エージェントを実装
-    # 現時点はダミーレスポンス
     if route == "sql":
-        result = f"[SQLエージェント] 「{question}」を調査します。（#93で実装）"
-    elif route == "rag":
-        result = f"[RAGエージェント] 「{question}」を審査規程から検索します。（#96で実装）"
+        from app.agents.sql_agent import run_sql_agent
+        result = await run_sql_agent(question, session_id)
+
     elif route == "fraud":
-        result = f"[不正検知エージェント] 「{question}」のリスクを分析します。（#93で実装）"
+        from app.agents.fraud_agent import run_fraud_agent
+        result = await run_fraud_agent(question, session_id)
+
+    elif route == "rag":
+        # #96で実装予定
+        result = f"[RAGエージェント] 「{question}」を審査規程から検索します。（#96で実装予定）"
+
     elif route == "web":
-        result = f"[Web収集エージェント] 「{question}」の最新情報を収集します。（#95で実装）"
+        # #95で実装予定
+        result = f"[Web収集エージェント] 「{question}」の最新情報を収集します。（#95で実装予定）"
+
     else:
         # 一般的な質問はLLMが直接回答
         response = await llm.ainvoke([
-            SystemMessage(content="あなたは経営者を支援するAIアシスタントです。日本語で丁寧に回答してください。"),
+            SystemMessage(content="""
+あなたはKEIEI-AIという経営者支援AIアシスタントです。
+経営者の質問に対して、分かりやすく丁寧に日本語で回答してください。
+数字や根拠を示しながら、実践的なアドバイスを提供してください。
+            """),
             HumanMessage(content=question),
         ])
         result = response.content
