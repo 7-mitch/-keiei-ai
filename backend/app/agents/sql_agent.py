@@ -1,92 +1,63 @@
 """
-#93 SQLエージェント
-自然言語でDBに質問できるエージェント
-例: 「先月の売上合計は？」「不正フラグが立った取引は何件？」
+#93 SQLエージェント（asyncpg直接実行版）
+Claude APIが使えない間もDBに直接問い合わせる
 """
-from langchain_anthropic import ChatAnthropic
-from langchain_community.utilities import SQLDatabase
-from langchain_community.agent_toolkits import SQLDatabaseToolkit
-from langgraph.prebuilt import create_react_agent
-from app.core.config import settings
-
-# ===== LLM =====
-llm = ChatAnthropic(
-    model       = "claude-3-5-sonnet-20240620",
-    temperature = 0,
-    api_key     = settings.anthropic_api_key,
-)
-
-# ===== SQLエージェントを構築 =====
-def build_sql_agent():
-    """SQLエージェントを初期化する"""
-    try:
-        # 【魔法の修正ポイント】
-        # .envのURLが postgresql:// のままでも、AIが使う時だけ +psycopg2 を自動で付け足します。
-        # これで asyncpg の起動エラーと、AIの打ち間違いエラーの両方を解決します。
-        fixed_url = settings.database_url.replace("postgresql://", "postgresql+psycopg2://")
-        
-        db      = SQLDatabase.from_uri(fixed_url)
-        toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-        tools   = toolkit.get_tools()
-
-        agent = create_react_agent(
-            model = llm,
-            tools = tools,
-            state_modifier = """
-あなたは経営者を支援するデータアナリストAIです。
-PostgreSQLデータベースに対してSQLクエリを実行して質問に答えてください。
-
-データベースの主なテーブル:
-- users:         ユーザー情報（id, name, email, role）
-- accounts:      口座情報（id, user_id, balance, account_type）
-- transactions: 取引履歴（id, account_id, amount, transaction_type, is_flagged, risk_score）
-- fraud_alerts: 不正アラート（id, severity, status, description）
-- kpi_metrics:   KPIメトリクス（metric_name, metric_value, period）
-- audit_logs:   監査ログ（operator_type, action, created_at）
-
-注意事項:
-- 必ず日本語で回答する
-- 金額は円単位で表示する
-- SELECTクエリのみ実行する（INSERT/UPDATE/DELETEは禁止）
-- 結果は経営者が理解しやすい形で説明する
-            """,
-        )
-        return agent
-
-    except Exception as e:
-        print(f"⚠️ SQLエージェント初期化エラー: {e}")
-        return None
-
-# シングルトンとして保持
-_sql_agent = None
-
-def get_sql_agent():
-    global _sql_agent
-    if _sql_agent is None:
-        _sql_agent = build_sql_agent()
-    return _sql_agent
-
+from app.db.connection import get_conn
 
 async def run_sql_agent(question: str, session_id: str) -> str:
-    """Supervisorから呼び出されるエントリポイント"""
-    agent = get_sql_agent()
-
-    if agent is None:
-        return "SQLエージェントの初期化に失敗しました。DB接続を確認してください。"
+    """自然言語の質問をSQLで答える（キーワードベース）"""
+    q = question.lower()
 
     try:
-        result = await agent.ainvoke({
-            "messages": [{"role": "user", "content": question}]
-        })
+        async with get_conn() as conn:
 
-        # 最後のメッセージを取得
-        messages = result.get("messages", [])
-        if messages:
-            last_message = messages[-1]
-            if hasattr(last_message, "content"):
-                return last_message.content
+            # 取引件数・金額
+            if any(kw in q for kw in ["取引件数", "取引数", "件数"]):
+                row = await conn.fetchrow("""
+                    SELECT COUNT(*) AS cnt, COALESCE(SUM(amount),0) AS total
+                    FROM transactions
+                    WHERE created_at >= DATE_TRUNC('month', NOW())
+                """)
+                return f"今月の取引件数は {row['cnt']}件、合計金額は ¥{int(row['total']):,} です。"
 
-        return "クエリの実行に失敗しました。"
+            # 残高・総資産
+            elif any(kw in q for kw in ["残高", "総資産", "資産"]):
+                row = await conn.fetchrow("""
+                    SELECT COALESCE(SUM(balance),0) AS total
+                    FROM accounts WHERE status = 'active'
+                """)
+                return f"総資産（アクティブ口座合計）は ¥{int(row['total']):,} です。"
+
+            # 不正・アラート
+            elif any(kw in q for kw in ["不正", "アラート", "フラグ"]):
+                row = await conn.fetchrow("""
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status='open') AS open,
+                        COUNT(*) FILTER (WHERE severity='critical') AS critical
+                    FROM fraud_alerts
+                """)
+                return f"不正アラートは合計 {row['total']}件（未対応: {row['open']}件、重大: {row['critical']}件）です。"
+
+            # ユーザー数
+            elif any(kw in q for kw in ["ユーザー", "利用者", "ユーザ数"]):
+                cnt = await conn.fetchval(
+                    "SELECT COUNT(*) FROM users WHERE is_active = true"
+                )
+                return f"アクティブユーザーは {cnt}人 です。"
+
+            # 売上
+            elif any(kw in q for kw in ["売上", "収益", "入金"]):
+                row = await conn.fetchrow("""
+                    SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS cnt
+                    FROM transactions
+                    WHERE transaction_type = 'credit'
+                    AND created_at >= DATE_TRUNC('month', NOW())
+                """)
+                return f"今月の入金（credit）は {row['cnt']}件、合計 ¥{int(row['total']):,} です。"
+
+            else:
+                return "申し訳ありません。その質問には対応していません。「取引件数」「残高」「不正アラート」「ユーザー数」などについて質問してみてください。"
 
     except Exception as e:
-        return f"エラーが発生しました: {str(e)}"
+        return f"DB問い合わせでエラーが発生しました: {str(e)}"
