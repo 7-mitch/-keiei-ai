@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     access_token_expire:   int = 60
 
     # CORS
-    allowed_origins:       list[str] = ["http://localhost:3000"]
+    allowed_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ]
 
     # 環境
     environment:           str = "development"
