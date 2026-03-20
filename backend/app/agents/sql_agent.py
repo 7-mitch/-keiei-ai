@@ -11,7 +11,7 @@ from app.core.config import settings
 
 # ===== LLM =====
 llm = ChatAnthropic(
-    model       = "claude-sonnet-4-20250514",
+    model       = "claude-3-5-sonnet-20240620",
     temperature = 0,
     api_key     = settings.anthropic_api_key,
 )
@@ -20,23 +20,28 @@ llm = ChatAnthropic(
 def build_sql_agent():
     """SQLエージェントを初期化する"""
     try:
-        db      = SQLDatabase.from_uri(settings.database_url)
+        # 【魔法の修正ポイント】
+        # .envのURLが postgresql:// のままでも、AIが使う時だけ +psycopg2 を自動で付け足します。
+        # これで asyncpg の起動エラーと、AIの打ち間違いエラーの両方を解決します。
+        fixed_url = settings.database_url.replace("postgresql://", "postgresql+psycopg2://")
+        
+        db      = SQLDatabase.from_uri(fixed_url)
         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
         tools   = toolkit.get_tools()
 
         agent = create_react_agent(
             model = llm,
             tools = tools,
-            prompt = """
+            state_modifier = """
 あなたは経営者を支援するデータアナリストAIです。
 PostgreSQLデータベースに対してSQLクエリを実行して質問に答えてください。
 
 データベースの主なテーブル:
-- users:        ユーザー情報（id, name, email, role）
-- accounts:     口座情報（id, user_id, balance, account_type）
+- users:         ユーザー情報（id, name, email, role）
+- accounts:      口座情報（id, user_id, balance, account_type）
 - transactions: 取引履歴（id, account_id, amount, transaction_type, is_flagged, risk_score）
 - fraud_alerts: 不正アラート（id, severity, status, description）
-- kpi_metrics:  KPIメトリクス（metric_name, metric_value, period）
+- kpi_metrics:   KPIメトリクス（metric_name, metric_value, period）
 - audit_logs:   監査ログ（operator_type, action, created_at）
 
 注意事項:

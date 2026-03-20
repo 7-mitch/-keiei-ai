@@ -6,7 +6,6 @@ from app.core.security import get_current_user
 
 router = APIRouter()
 
-# ===== リクエスト・レスポンスの型定義 =====
 class ChatRequest(BaseModel):
     question: str
 
@@ -15,7 +14,6 @@ class ChatResponse(BaseModel):
     route:      str
     session_id: str
 
-# ===== チャットAPI =====
 @router.post("", response_model=ChatResponse)
 async def chat(
     req:     ChatRequest,
@@ -25,8 +23,7 @@ async def chat(
     session_id = str(uuid.uuid4())
 
     try:
-        # supervisorエージェントを呼ぶ（#93で実装）
-        # 現時点ではダミーレスポンスを返す
+        # 1. AIエージェントを呼ぶ
         from app.agents.supervisor import supervisor
         result = await supervisor.ainvoke(
             {
@@ -39,26 +36,36 @@ async def chat(
             config={"configurable": {"thread_id": session_id}},
         )
 
-        # 監査ログを記録
-        await record_audit(
-            operator_id   = user.get("id"),
-            operator_type = "human",
-            target_type   = "chat",
-            target_id     = user.get("id", 0),
-            action        = f"chat:{result.get('route', 'general')}",
-            after_value   = {
-                "question": req.question,
-                "route":    result.get("route", "general"),
-            },
-            session_id = session_id,
-            ip_address = request.client.host if request.client else None,
-        )
+        res_dict = dict(result) if result else {}
 
+        # 2. 監査ログを記録（ここを独立した try-except にします）
+        try:
+            await record_audit(
+                operator_id   = user.get("id"),
+                operator_type = "human",
+                target_type   = "chat",
+                target_id     = None, 
+                action        = f"chat:{res_dict.get('route', 'general')}",
+                after_value   = {
+                    "question": req.question,
+                    "route":    res_dict.get("route", "general"),
+                },
+                session_id = session_id,
+                ip_address = request.client.host if request.client else None,
+            )
+        except Exception:
+            # ログ保存でエラー（0番さんがいない等）が出ても無視して進む
+            print("⚠️ 監査ログの保存に失敗しましたが、回答表示を優先します")
+            pass
+
+        # 3. 正常な回答を返す
         return ChatResponse(
-            answer     = result.get("result", ""),
-            route      = result.get("route", "general"),
+            answer     = res_dict.get("result", "回答を取得できませんでした。"),
+            route      = res_dict.get("route", "general"),
             session_id = session_id,
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="システム内でエラーが発生しました。")

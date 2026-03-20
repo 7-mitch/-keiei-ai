@@ -115,7 +115,7 @@ async def update_alert(
             SET
                 status      = $1,
                 resolved_at = CASE
-                    WHEN $1 IN ('resolved', 'false_positive') THEN NOW()
+                    WHEN $1::varcher IN ('resolved', 'false_positive') THEN NOW()
                     ELSE resolved_at
                 END
             WHERE id = $2
