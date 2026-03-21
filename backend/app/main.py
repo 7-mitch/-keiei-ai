@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.connection import init_db, close_db
-from app.api import chat, alert, report, auth, fraud, web
+from app.api import chat, alert, report, auth, fraud, web, rag
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +42,7 @@ app.include_router(alert.router,  prefix="/api/alert",  tags=["アラート"])
 app.include_router(report.router, prefix="/api/report", tags=["レポート"])
 app.include_router(fraud.router,  prefix="/api/fraud",  tags=["不正検知"])
 app.include_router(web.router,    prefix="/api/web",    tags=["web収集"])
+app.include_router(rag.router,    prefix="/api/rag",    tags=["RAG検索"])
 
 # ===== ヘルスチェック =====
 @app.get("/health", tags=["システム"])
