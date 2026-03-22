@@ -1,0 +1,33 @@
+{
+  "family": "keiei-ai-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::504558652204:role/consul-ai-ecs-task-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "keiei-ai-backend",
+      "image": "504558652204.dkr.ecr.ap-northeast-1.amazonaws.com/keiei-ai-backend:latest",
+      "portMappings": [{"containerPort": 8000, "protocol": "tcp"}],
+      "essential": true,
+      "secrets": [
+        {"name": "DATABASE_URL",      "valueFrom": "/keiei-ai/DATABASE_URL"},
+        {"name": "ANTHROPIC_API_KEY", "valueFrom": "/keiei-ai/ANTHROPIC_API_KEY"},
+        {"name": "OPENAI_API_KEY",    "valueFrom": "/keiei-ai/OPENAI_API_KEY"},
+        {"name": "TAVILY_API_KEY",    "valueFrom": "/keiei-ai/TAVILY_API_KEY"},
+        {"name": "SECRET_KEY",        "valueFrom": "/keiei-ai/SECRET_KEY"},
+        {"name": "ENVIRONMENT",       "valueFrom": "/keiei-ai/ENVIRONMENT"},
+        {"name": "ALLOWED_ORIGINS",   "valueFrom": "/keiei-ai/ALLOWED_ORIGINS"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/keiei-ai-backend",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
