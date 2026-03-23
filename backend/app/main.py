@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -7,6 +8,10 @@ from app.api import chat, alert, report, auth, fraud, web, rag
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # LangSmith設定
+    os.environ["LANGCHAIN_TRACING_V2"] = settings.langchain_tracing_v2
+    os.environ["LANGCHAIN_API_KEY"]    = settings.langchain_api_key
+    os.environ["LANGCHAIN_PROJECT"]    = settings.langchain_project
     # ===== 起動時 =====
     print("🚀 KEIEI-AI 起動中...")
     await init_db()
