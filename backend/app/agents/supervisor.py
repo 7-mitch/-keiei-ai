@@ -45,7 +45,7 @@ def route_question(state: SupervisorState) -> dict:
     else:
         route = "general"
 
-    print(f"🧭 ルーティング判定: {route}")
+    print(f"[ROUTE] ルーティング判定: {route}")
     return {"route": route}
 
 async def execute_agent(state: SupervisorState) -> dict:
@@ -89,7 +89,7 @@ async def execute_agent(state: SupervisorState) -> dict:
             
     except Exception as e:
         result = f"エラーが発生しました: {str(e)}"
-        print(f"[ERROR] エージェント実行エラー: {e}".encode('utf-8').decode('utf-8'))
+        print(f"エージェント実行エラー: {e}".encode('utf-8').decode('utf-8'))
 
     return {"result": result}
 

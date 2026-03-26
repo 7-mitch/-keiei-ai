@@ -19,14 +19,14 @@ async def lifespan(app: FastAPI):
     os.environ["LANGCHAIN_API_KEY"]    = settings.langchain_api_key
     os.environ["LANGCHAIN_PROJECT"]    = settings.langchain_project
     # ===== 起動時 =====
-    print("🚀 KEIEI-AI 起動中...")
+    print("[START] KEIEI-AI 起動中...")
     await init_db()
-    print("✅ 起動完了")
+    print("[OK] 起動完了")
     yield
     # ===== 終了時 =====
-    print("🛑 KEIEI-AI 終了中...")
+    print("[STOP] KEIEI-AI 終了中...")
     await close_db()
-    print("✅ 終了完了")
+    print("[OK] 終了完了")
 
 app = FastAPI(
     title       = "KEIEI-AI",
