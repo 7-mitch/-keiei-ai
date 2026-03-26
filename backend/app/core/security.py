@@ -1,21 +1,20 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 
-pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer()
 
 def hash_password(password: str) -> str:
     """パスワードをハッシュ化する"""
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 def verify_password(plain: str, hashed: str) -> bool:
     """パスワードを検証する"""
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 def create_access_token(data: dict[str, Any]) -> str:
     """JWTトークンを発行する"""
@@ -50,13 +49,6 @@ async def get_current_user(
     return decode_token(credentials.credentials)
 
 def require_role(*roles: str):
-    """
-    ロールベースアクセス制御（依存性注入）
-
-    使い方:
-        @router.get("/kpi", dependencies=[Depends(require_role("executive"))])
-        @router.get("/data", dependencies=[Depends(require_role("executive", "manager"))])
-    """
     async def check_role(
         current_user: dict = Depends(get_current_user)
     ) -> dict:
