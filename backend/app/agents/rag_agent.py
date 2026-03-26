@@ -26,7 +26,7 @@ def get_embeddings():
 # ===== ドキュメントの読み込み・インデックス作成 =====
 def build_vector_store() -> FAISS:
     """docs_dataフォルダのドキュメントをベクトル化する"""
-    print("📚 ドキュメントを読み込み中...")
+    print(" ドキュメントを読み込み中...")
 
     # テキストファイルを読み込む
     loader = DirectoryLoader(
@@ -36,7 +36,7 @@ def build_vector_store() -> FAISS:
         loader_kwargs = {"encoding": "utf-8"},
     )
     documents = loader.load()
-    print(f"📄 {len(documents)}件のドキュメントを読み込みました")
+    print(f" {len(documents)}件のドキュメントを読み込みました")
 
     # チャンクに分割
     splitter = RecursiveCharacterTextSplitter(
@@ -44,7 +44,7 @@ def build_vector_store() -> FAISS:
         chunk_overlap = 50,
     )
     chunks = splitter.split_documents(documents)
-    print(f"✂️ {len(chunks)}チャンクに分割しました")
+    print(f" {len(chunks)}チャンクに分割しました")
 
     # ベクトルストアを作成
     embeddings   = get_embeddings()
@@ -53,7 +53,7 @@ def build_vector_store() -> FAISS:
     # 保存
     os.makedirs(VECTOR_DIR, exist_ok=True)
     vector_store.save_local(VECTOR_DIR)
-    print(f"✅ ベクトルストアを保存しました: {VECTOR_DIR}")
+    print(f" ベクトルストアを保存しました: {VECTOR_DIR}")
 
     return vector_store
 
@@ -95,7 +95,7 @@ def search_documents(query: str, k: int = 3) -> list[dict]:
         return docs
 
     except Exception as e:
-        print(f"⚠️ RAG検索エラー: {e}")
+        print(f" RAG検索エラー: {e}")
         return []
 
 
@@ -122,13 +122,13 @@ def evaluate_relevance(query: str, docs: list[dict]) -> str:
 # ===== Supervisorから呼び出す関数 =====
 async def run_rag_agent(question: str, session_id: str) -> str:
     """Supervisorから呼び出されるエントリポイント"""
-    print(f"📚 RAGエージェント起動: {question}")
+    print(f" RAGエージェント起動: {question}")
 
     # ドキュメント検索
     docs = search_documents(question, k=3)
     quality = evaluate_relevance(question, docs)
 
-    print(f"🔍 検索品質: {quality} / 結果: {len(docs)}件")
+    print(f" 検索品質: {quality} / 結果: {len(docs)}件")
 
     if quality == "POOR" or not docs:
         return (
@@ -170,7 +170,7 @@ def search_bigquery_documents(query: str, limit: int = 5) -> list[dict]:
             for r in results
         ]
     except Exception as e:
-        print(f"⚠️ BigQuery検索エラー: {e}")
+        print(f" BigQuery検索エラー: {e}")
         return []
 
 
@@ -190,12 +190,12 @@ async def run_rag_agent_full(question: str, session_id: str) -> str:
     BigQuery対応版エントリポイント
     既存のrun_rag_agentはそのまま残す
     """
-    print(f"📚 RAGエージェント起動（統合版）: {question}")
+    print(f" RAGエージェント起動（統合版）: {question}")
 
     docs    = search_all_sources(question, k=3)
     quality = evaluate_relevance(question, docs)  # 既存関数流用
 
-    print(f"🔍 検索品質: {quality} / 結果: {len(docs)}件")
+    print(f" 検索品質: {quality} / 結果: {len(docs)}件")
 
     if quality == "POOR" or not docs:
         return (

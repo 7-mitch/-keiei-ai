@@ -15,7 +15,7 @@ async def init_db() -> None:
         command_timeout=30,
         statement_cache_size=0,
     )
-    print(f"✅ DB接続完了（{settings.environment}）")
+    print(f" DB接続完了（{settings.environment}）")
 
 async def close_db() -> None:
     if _pool:

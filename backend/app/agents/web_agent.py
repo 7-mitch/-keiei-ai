@@ -50,7 +50,7 @@ async def scrape_page(url: str, selector: str) -> list[dict]:
                     })
             await browser.close()
     except Exception as e:
-        print(f"⚠️ スクレイピングエラー ({url}): {e}")
+        print(f" スクレイピングエラー ({url}): {e}")
     return results
 
 
@@ -63,13 +63,13 @@ async def save_to_db(url: str, status: str, data_type: str, content: str) -> Non
                 VALUES ($1, $2, $3, $4)
             """, url, status, data_type, content)
     except Exception as e:
-        print(f"⚠️ DB保存エラー: {e}")
+        print(f" DB保存エラー: {e}")
 
 
 async def collect_news() -> list[dict]:
     all_results = []
     for source in NEWS_SOURCES:
-        print(f"🌐 収集開始: {source['name']}")
+        print(f" 収集開始: {source['name']}")
         articles = await scrape_page(source["url"], source["selector"])
         if articles:
             import json
@@ -79,7 +79,7 @@ async def collect_news() -> list[dict]:
                 data_type = source["type"],
                 content   = json.dumps(articles, ensure_ascii=False),
             )
-            print(f"✅ {source['name']}: {len(articles)}件収集")
+            print(f" {source['name']}: {len(articles)}件収集")
             all_results.extend([
                 {**a, "source": source["name"], "type": source["type"]}
                 for a in articles
@@ -126,7 +126,7 @@ async def run_web_agent(question: str, session_id: str) -> str:
         if urls:
             result = await collect_url(urls[0])
             return f"【{result['title']}】\n{result['content'][:500]}..."
-    print(f"🌐 Web収集エージェント起動: {question}")
+    print(f" Web収集エージェント起動: {question}")
     articles = await collect_news()
     if not articles:
         return "現在ニュースを収集できませんでした。"

@@ -131,7 +131,7 @@ def train_model(transactions: list[dict], labels: list[int]) -> dict:
     recall    = recall_score(y_test, y_pred, zero_division=0)
     f1        = f1_score(y_test, y_pred, zero_division=0)
 
-    print(f"\n📊 最良モデル: {best_model_name}")
+    print(f"\n 最良モデル: {best_model_name}")
     print(f"  Precision: {precision:.3f}")
     print(f"  Recall:    {recall:.3f}")
     print(f"  F1 Score:  {f1:.3f}")
@@ -139,7 +139,7 @@ def train_model(transactions: list[dict], labels: list[int]) -> dict:
 
     # モデルを保存
     joblib.dump(best_model, MODEL_PATH)
-    print(f"✅ モデルを保存: {MODEL_PATH}")
+    print(f" モデルを保存: {MODEL_PATH}")
 
     return {
         "model_name": best_model_name,
@@ -180,7 +180,7 @@ async def train_from_db() -> dict:
 
     fraud_count  = sum(labels)
     normal_count = len(labels) - fraud_count
-    print(f"📊 学習データ: 正常={normal_count}件, 不正={fraud_count}件")
+    print(f" 学習データ: 正常={normal_count}件, 不正={fraud_count}件")
 
     return train_model(transactions, labels)
 

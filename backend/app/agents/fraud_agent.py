@@ -89,7 +89,7 @@ def layer1_rule_based(state: FraudDetectionState) -> dict:
         "flags":     flags,
         "score":     min(score, 1.0),
     }
-    print(f"🔍 Layer1 ルールベース: {result}")
+    print(f" Layer1 ルールベース: {result}")
     return {"rule_result": result}
 
 
@@ -126,7 +126,7 @@ async def layer2_pattern_recognition(state: FraudDetectionState) -> dict:
                 "max_similarity":   0.0,
                 "score":            0.0,
             }
-            print(f"🔍 Layer2 パターン認識: 過去の不正データなし")
+            print(f" Layer2 パターン認識: 過去の不正データなし")
             return {"pattern_result": result}
 
         # Embeddingモデルでベクトル化
@@ -165,11 +165,11 @@ async def layer2_pattern_recognition(state: FraudDetectionState) -> dict:
             "max_similarity":   max_sim,
             "score":            score,
         }
-        print(f"🔍 Layer2 パターン認識: 類似度={max_sim:.3f}")
+        print(f" Layer2 パターン認識: 類似度={max_sim:.3f}")
         return {"pattern_result": result}
 
     except Exception as e:
-        print(f"⚠️ Layer2 エラー: {e}")
+        print(f" Layer2 エラー: {e}")
         return {"pattern_result": {"similar_patterns": [], "score": 0.0, "error": str(e)}}
 
 # ===== Layer 3: LLM判定 =====
@@ -191,7 +191,7 @@ async def layer3_llm_judgment(state: FraudDetectionState) -> dict:
         "severity":   severity,
         "reasoning":  f"ルールスコア:{rule_score:.2f} パターンスコア:{pattern_score:.2f}（LLM判定は一時スキップ）",
     }
-    print(f"🤖 Layer3 スキップ: score={risk_score:.2f}")
+    print(f" Layer3 スキップ: score={risk_score:.2f}")
     return {"llm_result": result}
 
 # ===== Layer 4: ML判定 =====
@@ -231,11 +231,11 @@ def layer4_ml_judgment(state: FraudDetectionState) -> dict:
                 "note":       "学習済みモデルなし・ルールスコアで代替",
             }
 
-        print(f"🧠 Layer4 ML判定: score={result['score']:.3f}")
+        print(f" Layer4 ML判定: score={result['score']:.3f}")
         return {"ml_result": result}
 
     except Exception as e:
-        print(f"⚠️ Layer4 エラー: {e}")
+        print(f" Layer4 エラー: {e}")
         return {"ml_result": {"score": 0.0, "error": str(e)}}
 
 
@@ -322,9 +322,9 @@ async def finalize_judgment(state: FraudDetectionState) -> dict:
             session_id    = state.get("session_id"),
         )
     else:
-        print(f"📝 監査ログスキップ（手動テスト）: is_fraud={is_fraud} score={final_score:.2f}")
+        print(f" 監査ログスキップ（手動テスト）: is_fraud={is_fraud} score={final_score:.2f}")
 
-    print(f"✅ 最終判定: is_fraud={is_fraud} score={final_score:.2f} severity={severity}")
+    print(f" 最終判定: is_fraud={is_fraud} score={final_score:.2f} severity={severity}")
 
     return {
         "is_fraud":   is_fraud,

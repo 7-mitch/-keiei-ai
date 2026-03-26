@@ -18,7 +18,7 @@ async def run_sql_agent(question: str, session_id: str) -> str:
                     FROM transactions
                     WHERE created_at >= DATE_TRUNC('month', NOW())
                 """)
-                return f"今月の取引件数は {row['cnt']}件、合計金額は ¥{int(row['total']):,} です。"
+                return f"今月の取引件数は {row['cnt']}件、合計金額は {int(row['total']):,} です。"
 
             # 残高・総資産
             elif any(kw in q for kw in ["残高", "総資産", "資産"]):
@@ -26,7 +26,7 @@ async def run_sql_agent(question: str, session_id: str) -> str:
                     SELECT COALESCE(SUM(balance),0) AS total
                     FROM accounts WHERE status = 'active'
                 """)
-                return f"総資産（アクティブ口座合計）は ¥{int(row['total']):,} です。"
+                return f"総資産（アクティブ口座合計）は {int(row['total']):,} です。"
 
             # 不正・アラート
             elif any(kw in q for kw in ["不正", "アラート", "フラグ"]):
@@ -54,7 +54,7 @@ async def run_sql_agent(question: str, session_id: str) -> str:
                     WHERE transaction_type = 'credit'
                     AND created_at >= DATE_TRUNC('month', NOW())
                 """)
-                return f"今月の入金（credit）は {row['cnt']}件、合計 ¥{int(row['total']):,} です。"
+                return f"今月の入金（credit）は {row['cnt']}件、合計 {int(row['total']):,} です。"
 
             else:
                 return "申し訳ありません。その質問には対応していません。「取引件数」「残高」「不正アラート」「ユーザー数」などについて質問してみてください。"
