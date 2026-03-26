@@ -1,10 +1,16 @@
 from contextlib import asynccontextmanager
 import os
+import sys
+import io
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.connection import init_db, close_db
 from app.api import chat, alert, report, auth, fraud, web, rag, collect
+
+# Windows UTF-8対応
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

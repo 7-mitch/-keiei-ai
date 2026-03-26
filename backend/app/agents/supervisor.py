@@ -79,7 +79,7 @@ async def execute_agent(state: SupervisorState) -> dict:
             
     except Exception as e:
         result = f"エラーが発生しました: {str(e)}"
-        print(f"❌ エージェント実行エラー: {e}")
+        print(f"[ERROR] エージェント実行エラー: {e}".encode('utf-8').decode('utf-8'))
 
     return {"result": result}
 
