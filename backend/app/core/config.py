@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url:             str = "redis://localhost:6379"
 
+    # GCP（追加）
+    gcp_project_id:                 str = ""
+    bq_dataset_id:                  str = "keiei_ai_dw"
+    google_application_credentials: str = ""
+
     class Config:
         env_file = ".env"
 

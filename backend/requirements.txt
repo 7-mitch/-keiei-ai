@@ -23,3 +23,7 @@ transformers==5.3.0
 redis==5.0.0
 httpx==0.28.1
 psycopg2-binary==2.9.11
+google-cloud-bigquery==3.34.0
+joblib
+scikit-learn
+pandas
