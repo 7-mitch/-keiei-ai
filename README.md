@@ -87,3 +87,5 @@ cd backend
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
+
+起動後: http://localhost:8000/docs でSwagger UIを確認できます
