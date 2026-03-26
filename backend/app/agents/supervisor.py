@@ -50,6 +50,12 @@ def route_question(state: SupervisorState) -> dict:
 
 async def execute_agent(state: SupervisorState) -> dict:
     """選択されたエージェントを実行する"""
+    import sys
+    import io
+    # Windows環境でのUTF-8対応
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
     route      = state["route"]
     question   = state["question"]
     session_id = state["session_id"]
@@ -75,7 +81,11 @@ async def execute_agent(state: SupervisorState) -> dict:
                 SystemMessage(content="あなたは経営支援AIアシスタント「Project AIGIS」です。"),
                 HumanMessage(content=question),
             ])
-            result = response.content
+            #contentがリストの場合も対応
+            if isinstance(response.content,list):
+                result = response.content[0].get("text","") if response.content else""
+            else:    
+                result = str(response.content)
             
     except Exception as e:
         result = f"エラーが発生しました: {str(e)}"
