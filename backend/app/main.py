@@ -8,9 +8,12 @@ from app.core.config import settings
 from app.db.connection import init_db, close_db
 from app.api import chat, alert, report, auth, fraud, web, rag, collect
 
-# Windows UTF-8対応
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# --- 既存の Windows UTF-8対応 の箇所を以下に置き換え ---
+
+# 標準出力と標準エラー出力を強制的にUTF-8に設定
+# (コンテナ環境やWindowsなど、環境を問わずUTF-8を強制します)
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
