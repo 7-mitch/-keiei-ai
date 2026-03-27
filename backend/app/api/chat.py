@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.db.audit import record_audit
 from app.core.security import get_current_user
+from app.agents.supervisor import supervisor
 
 router = APIRouter()
 
@@ -24,7 +25,6 @@ async def chat(
 
     try:
         # 1. AIエージェントを呼ぶ
-        from app.agents.supervisor import supervisor
         result = await supervisor.ainvoke(
             {
                 "question":   req.question,
