@@ -32,7 +32,14 @@ def route_question(state: SupervisorState) -> dict:
         route = "sql"
     elif any(kw in text for kw in ["不正", "アラート", "リスク", "フラグ", "fraud"]):
         route = "fraud"
-    elif any(kw in text for kw in ["規程", "審査", "ルール", "規則", "基準"]):
+    elif any(kw in text for kw in ["規程", "審査", "ルール", "規則", "基準",
+    "セキュリティ", "security", "監査", "audit",
+    "攻撃", "attack", "リスク", "risk", "脆弱性",
+    "不正", "fraud", "プロンプト", "injection",
+    "owasp", "nist", "iso", "sox", "cfe",
+    "暗号", "ランサム", "サプライチェーン",
+    "ゼロトラスト", "インシデント", "ガバナンス",
+    "量子", "pqc", "プライバシー", "対策",]):
         route = "rag"
     elif any(kw in text for kw in ["ニュース", "市場", "競合", "最新"]):
         route = "web"
@@ -58,7 +65,8 @@ async def execute_agent(state: SupervisorState) -> dict:
             result = await run_fraud_agent(question, session_id)
 
         elif route == "rag":
-            result = f"[RAG] {question} を検索中...（実装予定）"
+            from app.agents.rag_agent import run_rag_agent
+            result = await run_rag_agent(question, session_id)
 
         elif route == "web":
             result = f"[Web] {question} を調査中...（実装予定）"
