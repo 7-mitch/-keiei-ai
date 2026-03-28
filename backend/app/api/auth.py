@@ -95,3 +95,31 @@ async def register(req: CreateUserRequest):
         "name":    user["name"],
         "role":    user["role"],
     }
+
+# ===== 初期セットアップ（ユーザー0人の時のみ）=====
+@router.post("/setup")
+async def setup(req: CreateUserRequest):
+    async with get_conn() as conn:
+        # ユーザーが既に存在する場合は拒否
+        count = await conn.fetchval("SELECT COUNT(*) FROM users")
+        if count > 0:
+            raise HTTPException(
+                status_code=403,
+                detail="既にセットアップ済みです",
+            )
+        # 管理者ユーザー作成
+        user = await conn.fetchrow("""
+            INSERT INTO users (name, email, password_hash, role, is_active)
+            VALUES ($1, $2, $3, 'executive', true)
+            RETURNING id, name, email, role
+        """,
+            req.name,
+            req.email,
+            hash_password(req.password),
+        )
+    return {
+        "message": "セットアップが完了しました",
+        "user_id": user["id"],
+        "name":    user["name"],
+        "role":    user["role"],
+    }
