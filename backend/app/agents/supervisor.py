@@ -8,7 +8,7 @@ from langchain_ollama import ChatOllama
 # ===== LLM（Ollama + Qwen3）=====
 llm = ChatOllama(
     model    = "qwen3:8b",
-    base_url = "http://localhost:11434"
+    base_url = "http://host.docker.internal:11434"
 )
 
 # ===== State定義 =====
