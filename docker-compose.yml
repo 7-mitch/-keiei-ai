@@ -10,6 +10,7 @@ services:
     volumes:
       - ./backend/docs_data:/app/docs_data
       - ./backend/vector_store:/app/vector_store
+      - ./backend/docs_ingest:/app/docs_ingest
     restart: unless-stopped
 
   frontend:

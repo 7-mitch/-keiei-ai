@@ -7,11 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.connection import init_db, close_db
 from app.api import chat, alert, report, auth, fraud, web, rag, collect
-
-# --- 既存の Windows UTF-8対応 の箇所を以下に置き換え ---
+from app.api import projects  # ★ 追加
 
 # 標準出力と標準エラー出力を強制的にUTF-8に設定
-# (コンテナ環境やWindowsなど、環境を問わずUTF-8を強制します)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
@@ -53,15 +51,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # ===== ルーター登録 =====
-app.include_router(auth.router,   prefix="/api/auth",   tags=["認証"])
-app.include_router(chat.router,   prefix="/api/chat",   tags=["チャット"])
-app.include_router(alert.router,  prefix="/api/alert",  tags=["アラート"])
-app.include_router(report.router, prefix="/api/report", tags=["レポート"])
-app.include_router(fraud.router,  prefix="/api/fraud",  tags=["不正検知"])
-app.include_router(web.router,    prefix="/api/web",    tags=["web収集"])
-app.include_router(rag.router,    prefix="/api/rag",    tags=["RAG検索"])
-app.include_router(collect.router, prefix="/api/collect", tags=["データ収集"])
+app.include_router(auth.router,     prefix="/api/auth",     tags=["認証"])
+app.include_router(chat.router,     prefix="/api/chat",     tags=["チャット"])
+app.include_router(alert.router,    prefix="/api/alert",    tags=["アラート"])
+app.include_router(report.router,   prefix="/api/report",   tags=["レポート"])
+app.include_router(fraud.router,    prefix="/api/fraud",    tags=["不正検知"])
+app.include_router(web.router,      prefix="/api/web",      tags=["web収集"])
+app.include_router(rag.router,      prefix="/api/rag",      tags=["RAG検索"])
+app.include_router(collect.router,  prefix="/api/collect",  tags=["データ収集"])
+app.include_router(projects.router, prefix="/api/projects", tags=["工程管理"])  # ★ 追加
 
 # ===== ヘルスチェック =====
 @app.get("/health", tags=["システム"])

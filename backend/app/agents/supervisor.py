@@ -21,28 +21,42 @@ class SupervisorState(TypedDict):
 
 # ===== ルーティング判断 =====
 class RouteDecision(BaseModel):
-    route:  Literal["sql", "rag", "fraud", "web", "general"]
+    route:  Literal["project", "sql", "rag", "fraud", "web", "general"]  # ★ project追加
     reason: str
 
 def route_question(state: SupervisorState) -> dict:
     """質問内容からキーワードベースでルーティング"""
     text = state.get("question", "").lower()
 
-    if any(kw in text for kw in ["取引", "売上", "件数", "残高", "ユーザー", "kpi", "金額"]):
+    # ★ 工程管理（sqlより前に置く — 「担当」「進捗」はSQLとかぶらないため優先）
+    if any(kw in text for kw in [
+        "進捗", "プロジェクト", "タスク", "工程", "フェーズ",
+        "遅延", "担当", "アサイン", "スケジュール", "期限",
+        "稼働", "過負荷", "何が残っている", "間に合う",
+    ]):
+        route = "project"
+
+    elif any(kw in text for kw in ["取引", "売上", "件数", "残高", "ユーザー", "kpi", "金額"]):
         route = "sql"
-    elif any(kw in text for kw in ["不正", "アラート", "リスク", "フラグ", "fraud"]):
+
+    elif any(kw in text for kw in ["不正", "アラート", "フラグ", "fraud"]):
         route = "fraud"
-    elif any(kw in text for kw in ["規程", "審査", "ルール", "規則", "基準",
-    "セキュリティ", "security", "監査", "audit",
-    "攻撃", "attack", "リスク", "risk", "脆弱性",
-    "不正", "fraud", "プロンプト", "injection",
-    "owasp", "nist", "iso", "sox", "cfe",
-    "暗号", "ランサム", "サプライチェーン",
-    "ゼロトラスト", "インシデント", "ガバナンス",
-    "量子", "pqc", "プライバシー", "対策",]):
+
+    elif any(kw in text for kw in [
+        "規程", "審査", "ルール", "規則", "基準",
+        "セキュリティ", "security", "監査", "audit",
+        "攻撃", "attack", "脆弱性",
+        "プロンプト", "injection",
+        "owasp", "nist", "iso", "sox", "cfe",
+        "暗号", "ランサム", "サプライチェーン",
+        "ゼロトラスト", "インシデント", "ガバナンス",
+        "量子", "pqc", "プライバシー", "対策",
+    ]):
         route = "rag"
+
     elif any(kw in text for kw in ["ニュース", "市場", "競合", "最新"]):
         route = "web"
+
     else:
         route = "general"
 
@@ -56,7 +70,12 @@ async def execute_agent(state: SupervisorState) -> dict:
     session_id = state["session_id"]
 
     try:
-        if route == "sql":
+        # ★ 工程管理エージェント（新規追加）
+        if route == "project":
+            from app.agents.project_agent import run_project_agent
+            result = await run_project_agent(question, session_id)
+
+        elif route == "sql":
             from app.agents.sql_agent import run_sql_agent
             result = await run_sql_agent(question, session_id)
 
@@ -81,7 +100,7 @@ async def execute_agent(state: SupervisorState) -> dict:
             else:
                 result = str(response.content)
 
-        return {"result": result} 
+        return {"result": result}
 
     except Exception as e:
         import traceback
