@@ -1,450 +1,273 @@
-# KEIEI-AI 経営者支援AIシステム
+# KEIEI-AI — 経営者支援AIシステム
 
-## 概要
-LangGraph + Claude APIを使った経営者向けAIアシスタント。
-財務分析・不正検知・KPI管理を自動化します。
-Zendesk/kintone等の外部データをBigQueryに集約し、RAGで活用します。
+> **ローカルLLM × RAG × マルチエージェントで実現する、完全オンプレ型の経営支援プラットフォーム**
 
-## 技術スタック
-
-### Backend
-- Python / FastAPI
-- LangGraph（マルチエージェント）
-- Claude API（Anthropic）
-- PostgreSQL（Neon）
-- Google BigQuery（DWH）
-- FAISS（ベクトル検索）
-- HuggingFace Embeddings（multilingual-e5-large）
-
-### Frontend
-- TypeScript / Next.js
-- Vercel（デプロイ）
-
-### Infrastructure
-- AWS ECS Fargate（バックエンド）
-- AWS ECR（Dockerレジストリ）
-- AWS SSM（シークレット管理）
-- GitHub Actions（CI/CD）
-- LangSmith（AI監視・トレース）
-- Docker Compose（ローカル環境）
-
-## 機能一覧
-- 💬 AIチャット（LangGraph + Claude）
-- 📊 経営ダッシュボード（KPI管理）
-- 🚨 不正アラート検知
-- 🔍 不正検知（MLモデル）
-- 📚 RAG検索（FAISS + BigQuery統合）
-- 📝 レポート自動生成
-- 🌐 Web情報収集
-- 📥 データ収集・DWH同期
+[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.135-green?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js)](https://nextjs.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.1-orange)](https://langchain-ai.github.io/langgraph/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)](https://docker.com)
+[![AWS](https://img.shields.io/badge/AWS-ECS_Fargate-orange?logo=amazon-aws)](https://aws.amazon.com)
 
 ---
 
-## エージェント詳細設計
+## 概要
 
-### Supervisor Agent
-全エージェントを統括するオーケストレーター。
-ユーザーの質問を解析し、最適なエージェントにルーティングする。
+KEIEI-AIは、**社内データをクラウドに送ることなく**、ローカルLLMとRAGを活用して経営者の意思決定を支援するAIシステムです。
+
+- 機密情報をクラウドに出さない**完全オンプレ運用**
+- チャット1行で財務・工程・セキュリティ情報を横断検索
+- Word・PDF・Excel・PowerPointを自動でベクトルDB化
+- Docker Composeで**社内サーバーにワンコマンドで展開可能**
+
+---
+
+## 主要機能
+
+| 機能 | 説明 |
+|---|---|
+| 💬 **AIチャット** | LangGraph + Ollama（ローカルLLM）によるマルチエージェント対話 |
+| 📋 **工程管理** | スケジュール表を入力するとAIが工程表・タスク・リスクを自動生成 |
+| 📚 **RAG検索** | 社内規定・手順書・技術文書をベクトル化して自然言語で検索 |
+| 📊 **経営ダッシュボード** | KPI・取引データ・アラートをリアルタイム可視化 |
+| 🚨 **不正検知** | ルールベース + MLモデル + LLMの三層構造で不正を検知 |
+| 🌐 **Web収集** | 市場・競合情報を自動収集してRAGに組み込む |
+| 📥 **データ収集** | Zendesk / kintone / AWSからBigQueryにデータを自動同期 |
+
+---
+
+## システムアーキテクチャ
+
 ```
-入力 → Supervisor → ルーティング判定
-                ├── "売上は？"      → SQL Agent
-                ├── "規程を調べて"  → RAG Agent
-                ├── "不正チェック"  → Fraud Agent
-                └── "最新ニュース"  → Web Agent
+┌─────────────────────────────────────────────────┐
+│  ユーザー（チャット・ダッシュボード・工程管理）   │
+│  Next.js フロントエンド（Vercel / Docker）        │
+└────────────────────┬────────────────────────────┘
+                     │ HTTPS
+┌────────────────────▼────────────────────────────┐
+│            FastAPI バックエンド                   │
+│         （AWS ECS Fargate / Docker）             │
+│                                                  │
+│  ┌─────────────────────────────────────────┐    │
+│  │          LangGraph Supervisor            │    │
+│  │  質問を解析して最適なエージェントへ振分け │    │
+│  └──┬──────┬──────┬──────┬───────┬────────┘    │
+│     │      │      │      │       │              │
+│   SQL    RAG  Fraud  Web  Project               │
+│  Agent  Agent Agent Agent  Agent                │
+└──┬───────┬──────────────────────────────────────┘
+   │       │
+   ▼       ▼
+PostgreSQL  ChromaDB/FAISS  BigQuery  Ollama(LLM)
 ```
 
-### SQL Agent
-PostgreSQL（NeonDB）に対してSQLを生成・実行する。
-- 取引データの集計
-- KPI計算
-- 異常値検出
+---
 
-### RAG Agent
-FAISSベクトルストアを使った社内文書検索。
-- HuggingFace multilingual-e5-largeで埋め込み生成
-- コサイン類似度で関連文書を検索
-- 検索品質をevaluate_relevanceで評価
-```
-クエリ → Embedding → FAISS検索 → 関連文書取得 → LLM回答生成
-```
+## マルチエージェント設計
 
-### Fraud Agent
-多層構造の不正検知システム。
 ```
-取引データ
+ユーザーの質問
     ↓
-ルールベース検知（閾値・パターン）
-    ↓
-MLモデル検知（scikit-learn）
-    ↓
-LLM判定（Claude）
-    ↓
-総合リスクスコア算出（0.0〜1.0）
-    ↓
-severity判定（low/medium/high/critical）
+Supervisor Agent（ルーティング判定）
+    ├── 「売上は？」「KPIは？」      → SQL Agent     → PostgreSQL
+    ├── 「規程を教えて」「手順は？」  → RAG Agent     → ChromaDB / FAISS
+    ├── 「不正チェック」「アラート」  → Fraud Agent   → ML Model + LLM
+    ├── 「市場動向は？」             → Web Agent     → Playwright
+    └── 「工程の進捗は？」           → Project Agent → PostgreSQL（工程DB）
 ```
 
-### Web Agent
-Playwright + Tavily を使ったWeb情報収集。
-- 金融ニュースの自動収集
-- 指定URLのコンテンツ取得
-- 収集ログをPostgreSQLに保存
+### 工程管理エージェント（新機能）
+
+チャットで「このプロジェクトの進捗を教えて」と入力するだけで、
+DBのタスクデータをAIが分析して回答します。
+
+```
+質問 →「このプロジェクトの進捗を教えて」
+         ↓
+   Project Agent 起動
+         ↓
+   PostgreSQL からタスク・メンバー情報取得
+         ↓
+   AIが分析・コメント生成
+         ↓
+回答 →「フェーズ2のAPI実装が遅延リスクです。
+        全体進捗: 1/5タスク完了（20%）」
+```
+
+---
+
+## ドキュメントRAG（多形式対応）
+
+社内のあらゆるドキュメントを自然言語で検索できます。
+
+| 対応形式 | 用途例 |
+|---|---|
+| `.docx` | 社内規定・契約書・手順書 |
+| `.pdf` | 技術仕様書・報告書 |
+| `.xlsx` | データ一覧・管理台帳 |
+| `.pptx` | 提案資料・研修資料 |
+| `.txt` | ログ・メモ |
+
+`docs_ingest/` フォルダにファイルを置くだけで自動インデックス化されます。
+
+---
+
+## 技術スタック
+
+### バックエンド
+| 技術 | 用途 |
+|---|---|
+| Python 3.11 / FastAPI | APIサーバー |
+| LangGraph | マルチエージェントオーケストレーション |
+| Ollama（Qwen3:8b） | ローカルLLM |
+| ChromaDB / FAISS | ベクトルDB |
+| HuggingFace multilingual-e5 | 日本語埋め込みモデル |
+| asyncpg / PostgreSQL | データベース |
+| Google BigQuery | データウェアハウス |
+| scikit-learn | 不正検知MLモデル |
+
+### フロントエンド
+| 技術 | 用途 |
+|---|---|
+| TypeScript / Next.js 16 | Webアプリ |
+| Tailwind CSS | スタイリング |
+| Recharts | グラフ・可視化 |
+| axios | API通信 |
+
+### インフラ
+| 技術 | 用途 |
+|---|---|
+| Docker Compose | ローカル・オンプレ環境 |
+| AWS ECS Fargate | クラウド本番環境 |
+| AWS ECR | Dockerイメージ管理 |
+| AWS SSM | シークレット管理 |
+| GitHub Actions | CI/CD自動デプロイ |
+| LangSmith | AI監視・トレース |
+| Vercel | フロントエンドホスティング |
 
 ---
 
 ## セキュリティ設計
 
-### 認証フロー（JWT）
-```
-1. POST /api/auth/login
-   └── email + password を受け取る
+### 認証・認可
+- **JWT認証**（HS256、有効期限設定）
+- **bcrypt**（コスト係数12）によるパスワードハッシュ化
+- **RBAC**（ロールベースアクセス制御）
 
-2. bcryptでパスワード検証
-   └── checkpw(plain, hashed)
-
-3. JWTトークン生成
-   └── payload: { sub, id, role, name, exp }
-   └── アルゴリズム: HS256
-   └── 有効期限: settings.access_token_expire（分）
-
-4. Bearer tokenとしてリクエストヘッダーに付与
-   └── Authorization: Bearer eyJhbG...
-
-5. get_current_user() で毎回検証
-   └── 期限切れ・改ざん検知 → 401 Unauthorized
-```
-
-### ロールベースアクセス制御（RBAC）
 ```
 executive  → 全機能アクセス可能
 manager    → アラート更新・モデル学習可能
 operator   → 閲覧のみ
 ```
 
-### CORS設定
-```python
-allow_origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://keiei-ai-frontend.vercel.app",
-    "https://*.vercel.app",
-]
-```
-
-### パスワードセキュリティ
-- bcrypt（コスト係数12）でハッシュ化
-- 元のパスワードは保存しない
-- 8文字以上を必須とする（フロントバリデーション）
+### オンプレ運用の安全性
+- 社内データは外部クラウドに送信されない
+- LLM推論はローカルOllamaで完結
+- ベクトルDBも社内サーバー内に保持
 
 ---
 
-## DB設計（テーブル定義）
-
-### users
-```sql
-id            SERIAL PRIMARY KEY
-name          VARCHAR
-email         VARCHAR UNIQUE
-password_hash VARCHAR
-role          VARCHAR  -- executive / manager / operator
-is_active     BOOLEAN DEFAULT true
-created_at    TIMESTAMP
-```
-
-### accounts
-```sql
-id         SERIAL PRIMARY KEY
-user_id    INTEGER REFERENCES users(id)
-balance    NUMERIC
-created_at TIMESTAMP
-```
-
-### transactions
-```sql
-id               SERIAL PRIMARY KEY
-account_id       INTEGER REFERENCES accounts(id)
-amount           NUMERIC
-transaction_type VARCHAR  -- debit / credit / transfer
-description      VARCHAR
-created_at       TIMESTAMP
-```
-
-### fraud_alerts
-```sql
-id             SERIAL PRIMARY KEY
-transaction_id INTEGER REFERENCES transactions(id)
-alert_type     VARCHAR
-severity       VARCHAR  -- low / medium / high / critical
-description    VARCHAR
-status         VARCHAR  -- open / investigating / resolved / false_positive
-created_at     TIMESTAMP
-resolved_at    TIMESTAMP
-```
-
-### audit_logs
-```sql
-id            SERIAL PRIMARY KEY
-operator_id   INTEGER
-operator_type VARCHAR  -- human / ai
-target_type   VARCHAR
-target_id     INTEGER
-action        VARCHAR
-before_value  JSONB
-after_value   JSONB
-created_at    TIMESTAMP
-```
-
-### kpi_metrics
-```sql
-id           SERIAL PRIMARY KEY
-metric_name  VARCHAR
-metric_value NUMERIC
-unit         VARCHAR
-period       VARCHAR
-created_at   TIMESTAMP
-```
-
-### web_collection_logs
-```sql
-id           SERIAL PRIMARY KEY
-url          VARCHAR
-status       VARCHAR
-data_type    VARCHAR
-processed_at TIMESTAMP
-```
-
-### reports
-```sql
-id         SERIAL PRIMARY KEY
-title      VARCHAR
-content    TEXT
-created_at TIMESTAMP
-```
-
----
-
-## CI/CDパイプライン（GitHub Actions）
-
-### 全体フロー
-```
-git push origin main
-    ↓
-GitHub Actions トリガー
-    ↓
-┌─────────────────────────────┐
-│ 1. Checkout                 │
-│ 2. AWS認証（OIDC）          │
-│ 3. ECRログイン              │
-│ 4. Dockerイメージビルド     │
-│ 5. ECRにpush                │
-│ 6. ECS タスク定義更新       │
-│ 7. ECS サービス更新         │
-│    （ローリングデプロイ）    │
-└─────────────────────────────┘
-    ↓
-ECS Fargate 本番環境に反映
-```
-
-### ワークフロー設定（`.github/workflows/deploy.yml`）
-```yaml
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: aws-actions/configure-aws-credentials@v2
-      - uses: aws-actions/amazon-ecr-login@v1
-      - name: Build & Push
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-      - name: Deploy to ECS
-        run: |
-          aws ecs update-service \
-            --cluster consul-ai-cluster \
-            --service keiei-ai-service \
-            --force-new-deployment
-```
-
-### シークレット管理
-```
-GitHub Secrets:
-├── AWS_ACCESS_KEY_ID
-├── AWS_SECRET_ACCESS_KEY
-├── ECR_REGISTRY
-└── ECR_REPOSITORY
-
-AWS SSM Parameter Store:
-├── ANTHROPIC_API_KEY
-├── DATABASE_URL
-├── SECRET_KEY
-└── LANGCHAIN_API_KEY
-```
-
----
-
-## アーキテクチャ
-```
-Vercel（Frontend: Next.js）
-    ↓ HTTPS
-AWS ECS Fargate（Backend: FastAPI + LangGraph）
-    ↓
-Neon PostgreSQL（トランザクションDB）
-    ↓
-Google BigQuery（DWH・分析）
-    ↓
-FAISS + BigQuery（RAG統合検索）
-    ↓
-LangSmith（監視・トレース）
-```
-
-## データフロー
-```
-Zendesk / kintone / AWS
-    ↓
-FastAPI（data_collector）
-    ↓
-BigQuery（DWH）
-    ↓
-RAGエージェント（FAISS + BigQuery統合検索）
-    ↓
-AIチャット応答
-```
-
-## プロジェクト構成
-```
-keiei-ai/
-├── backend/
-│   ├── app/
-│   │   ├── agents/      # LangGraphエージェント
-│   │   │   ├── supervisor.py
-│   │   │   ├── rag_agent.py
-│   │   │   ├── sql_agent.py
-│   │   │   ├── fraud_agent.py
-│   │   │   ├── fraud_ml_model.py
-│   │   │   └── web_agent.py
-│   │   ├── api/         # FastAPIルーター
-│   │   │   ├── auth.py
-│   │   │   ├── chat.py
-│   │   │   ├── alert.py
-│   │   │   ├── fraud.py
-│   │   │   ├── rag.py
-│   │   │   ├── web.py
-│   │   │   ├── collect.py
-│   │   │   └── report.py
-│   │   ├── core/        # 認証・設定
-│   │   │   ├── security.py
-│   │   │   └── config.py
-│   │   └── db/          # DB接続
-│   │       ├── connection.py
-│   │       └── audit.py
-│   ├── docs_data/       # RAG用文書
-│   ├── vector_store/    # FAISSインデックス
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/         # Next.jsページ
-│   │   │   ├── dashboard/
-│   │   │   ├── chat/
-│   │   │   ├── alerts/
-│   │   │   ├── fraud/
-│   │   │   ├── rag/
-│   │   │   ├── web/
-│   │   │   ├── collect/
-│   │   │   ├── login/
-│   │   │   └── setup/
-│   │   ├── components/  # UIコンポーネント
-│   │   └── lib/
-│   │       └── api.ts   # API関数
-│   └── Dockerfile
-├── docker-compose.yml
-└── README.md
-```
-
-## API エンドポイント
-- `/api/auth`    認証・ユーザー管理
-- `/api/chat`    AIチャット
-- `/api/rag`     RAG検索
-- `/api/collect` データ収集・DWH同期
-- `/api/fraud`   不正検知
-- `/api/alert`   アラート管理
-- `/api/report`  レポート生成
-- `/api/web`     Web情報収集
-
----
-
-## ローカル起動方法
+## ローカル起動
 
 ### 必要環境
 - Docker Desktop
 - Git
 
 ### 起動手順
+
 ```bash
-# リポジトリをクローン
+# クローン
 git clone https://github.com/7-mitch/keiei-ai.git
 cd keiei-ai
 
-# 環境変数を設定
+# 環境変数設定
 cp backend/.env.example backend/.env
-# .envを編集してAPIキーを設定
+# .env を編集してAPIキーを設定
 
-# Docker Composeで一発起動
+# 一発起動
 docker-compose up --build
 
-# ブラウザでアクセス
-# フロントエンド: http://localhost:3000
+# アクセス
+# フロントエンド:  http://localhost:3001
 # バックエンドAPI: http://localhost:8000
-# Swagger UI:     http://localhost:8000/docs
+# Swagger UI:     http://localhost:8000/docs（開発環境のみ）
 ```
 
-### 初回セットアップ
-```
-1. http://localhost:3000/setup にアクセス
-2. 管理者アカウントを作成
-3. http://localhost:3000/login でログイン
-```
+### ドキュメントRAGの使い方
 
-### 個別起動（開発時）
 ```bash
-# バックエンド
-cd backend
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload
+# docs_ingest/ に社内ドキュメントを配置
+cp 社内規定.docx backend/docs_ingest/
+cp 手順書.pdf    backend/docs_ingest/
 
-# フロントエンド
-cd frontend
-npm install
-npm run dev
+# チャットで検索
+# 「情報セキュリティのルールを教えて」→ 該当箇所を自動回答
 ```
 
-## 環境変数
+---
 
-`backend/.env.example`を参考に設定してください。
+## APIエンドポイント
+
+| エンドポイント | 機能 |
+|---|---|
+| `POST /api/auth/login` | ログイン |
+| `POST /api/chat` | AIチャット |
+| `POST /api/rag/search` | RAG検索 |
+| `GET  /api/projects/{id}/tasks` | タスク一覧 |
+| `POST /api/projects/{id}/tasks` | タスク追加 |
+| `PUT  /api/projects/{id}/tasks/{tid}` | タスク更新 |
+| `DELETE /api/projects/{id}/tasks/{tid}` | タスク削除 |
+| `GET  /api/projects/{id}/members` | メンバー一覧 |
+| `GET  /api/projects/{id}/summary` | 進捗サマリー |
+| `POST /api/fraud/check` | 不正検知 |
+| `GET  /api/report/kpi` | KPI取得 |
+
+---
+
+## デプロイURL
+
+| 環境 | URL |
+|---|---|
+| フロントエンド（Vercel） | https://keiei-ai-frontend.vercel.app |
+| バックエンドAPI（AWS） | https://api.nvisio-ai.online |
+| ヘルスチェック | https://api.nvisio-ai.online/health |
+
+---
+
+## プロジェクト構成
+
 ```
-DATABASE_URL=postgresql://...
-SECRET_KEY=your-secret-key
-ANTHROPIC_API_KEY=your-api-key
-LANGCHAIN_API_KEY=your-langsmith-key
-LANGCHAIN_PROJECT=keiei-ai
-ENVIRONMENT=development
+keiei-ai/
+├── backend/
+│   ├── app/
+│   │   ├── agents/
+│   │   │   ├── supervisor.py        # ルーティング
+│   │   │   ├── rag_agent.py         # RAG検索
+│   │   │   ├── sql_agent.py         # SQL分析
+│   │   │   ├── fraud_agent.py       # 不正検知
+│   │   │   ├── project_agent.py     # 工程管理（新規）
+│   │   │   └── universal_ingest.py  # 多形式RAG投入（新規）
+│   │   ├── api/
+│   │   │   ├── chat.py
+│   │   │   ├── projects.py          # 工程管理API（新規）
+│   │   │   └── ...
+│   │   ├── core/
+│   │   └── db/
+│   ├── docs_ingest/   # ← ここにドキュメントを配置
+│   ├── migrations/    # DBマイグレーションSQL
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── app/
+│       │   ├── projects/  # 工程管理画面（新規）
+│       │   └── ...
+│       └── components/
+├── docker-compose.yml
+└── README.md
 ```
 
-## デプロイ
-
-mainブランチへのpushで自動デプロイ（GitHub Actions）
-
-## URL
-
-- Frontend: https://keiei-ai-frontend.vercel.app
-- Backend:  https://api.nvisio-ai.online
-- Domain:   https://nvisio-ai.online（設定中）
+---
 
 ## ライセンス
 
-Private
+Private — 無断転用・複製を禁じます。
