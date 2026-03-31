@@ -129,6 +129,12 @@ def route_question(state: SupervisorState) -> dict:
     ]):
         route = "rag"
 
+    elif any(kw in text for kw in [
+        "人事", "評価", "コメント", "人材", "査定",
+        "目標", "MBO", "1on1", "フィードバック", "育成",
+    ]):
+        route = "hr"
+
     elif any(kw in text for kw in ["ニュース", "市場", "競合", "最新"]):
         route = "web"
 
@@ -166,6 +172,10 @@ async def execute_agent(state: SupervisorState) -> dict:
         elif route == "rag":
             from app.agents.rag_agent import run_rag_agent
             result = await run_rag_agent(question, session_id)
+
+        elif route == "hr":
+            from app.agents.hr_agent import run_hr_agent
+            result = await run_hr_agent(question, session_id)
 
         elif route == "web":
             result = f"[Web] {question} を調査中...（実装予定）"
