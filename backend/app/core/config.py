@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     bq_dataset_id:                  str = "keiei_ai_dw"
     google_application_credentials: str = ""
 
+    # HuggingFace キャッシュ
+    hf_cache_dir:          str = "/tmp/huggingface"  # ← 追加
+
     class Config:
         env_file = ".env"
 

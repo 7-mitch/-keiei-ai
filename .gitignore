@@ -58,3 +58,15 @@ backend/docs_ingest/*.xlsx
 backend/docs_ingest/*.pptx
 .env
 backend/.env
+
+# キャッシュ
+__pycache__/
+*.pyc
+
+# テスト・学習スクリプト
+test_fraud.py
+train_fraud_model.py
+
+# モデルファイル（大きいバイナリ）
+app/agents/fraud_model.pkl
+app/agents/fraud_scaler.pkl

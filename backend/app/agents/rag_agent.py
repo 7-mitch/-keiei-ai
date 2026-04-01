@@ -11,13 +11,13 @@ import chromadb
 from chromadb.utils import embedding_functions
 
 # ===== 設定 =====
-DOCS_DIR        = "docs_data"
-VECTOR_DIR      = "vector_store"
+DOCS_DIR         = "docs_data"
+VECTOR_DIR       = "vector_store"
 AIGIS_CHROMA_DIR = "vector_store/aigis"
 AIGIS_COLLECTION = "aigis_audit_items"
-EMBED_MODEL     = "intfloat/multilingual-e5-large"
-EMBED_MODEL_SM  = "intfloat/multilingual-e5-small"
-CACHE_DIR       = "C:\\Users\\Owner\\.cache\\huggingface"
+EMBED_MODEL      = "intfloat/multilingual-e5-large"
+EMBED_MODEL_SM   = "intfloat/multilingual-e5-small"
+CACHE_DIR        = os.getenv("HF_CACHE_DIR", "/tmp/huggingface")  # ← 修正済み
 
 # ===== Embeddingモデル =====
 def get_embeddings():

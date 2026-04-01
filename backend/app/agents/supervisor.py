@@ -4,6 +4,8 @@ supervisor.py — KEIEI-AI マルチエージェント統括
   - project エージェント追加
   - check_prompt_security() セキュリティ検査追加（AIGIS連携）
   - 環境変数によるLLM切り替え（ローカル=Ollama / クラウド=Claude API）
+  - cash_flow_agent 追加
+  - hr バグ修正
 """
 import os
 from typing import TypedDict, Literal
@@ -13,8 +15,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
 
 # ===== LLM 環境切り替え =====
-# ローカル環境 → Ollama（無料・完全オンプレ・セキュア）
-# クラウド環境 → Claude API（外部公開・デモ用）
 _env = os.getenv("ENVIRONMENT", "development")
 
 if _env == "production":
@@ -44,16 +44,6 @@ class SupervisorState(TypedDict):
 
 # ===== セキュリティ検査（AIGIS連携） =====
 def check_prompt_security(question: str) -> str | None:
-    """
-    プロンプトインジェクション・有害入力を検査する。
-    内部利用: 監査ログとして記録
-    外部公開: 攻撃を遮断
-    AIGIS 336監査項目をリスク辞書として活用。
-    問題なし → None を返す
-    問題あり → エラーメッセージを返す
-    """
-
-    # ① プロンプトインジェクションパターン検知
     injection_patterns = [
         "ignore previous instructions",
         "ignore all instructions",
@@ -72,7 +62,6 @@ def check_prompt_security(question: str) -> str | None:
             print(f"[SECURITY] インジェクション検知: {question[:50]}")
             return "不正な入力が検知されました。この操作は監査ログに記録されます。"
 
-    # ② 機密情報漏洩防止
     sensitive_patterns = [
         "パスワード", "APIキー", "秘密鍵", "トークン",
         "password", "api_key", "secret", "private key",
@@ -83,21 +72,20 @@ def check_prompt_security(question: str) -> str | None:
             print(f"[SECURITY] 機密情報関連クエリ: {question[:50]}")
             return "機密情報に関する質問には回答できません。"
 
-    # ③ AIGISの336監査項目でリスク評価（ログ記録のみ・遮断はしない）
     try:
         from app.agents.rag_agent import search_aigis
         risk_docs = search_aigis(question, k=1)
         if risk_docs and risk_docs[0]["score"] < 0.2:
             print(f"[SECURITY] AIGISリスク高スコア検知: {question[:50]}")
     except Exception:
-        pass  # AIGIS未接続でも動作継続
+        pass
 
-    return None  # 問題なし
+    return None
 
 
 # ===== ルーティング判断 =====
 class RouteDecision(BaseModel):
-    route:  Literal["project", "sql", "rag", "fraud", "web", "general"]
+    route:  Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "general"]
     reason: str
 
 def route_question(state: SupervisorState) -> dict:
@@ -105,13 +93,21 @@ def route_question(state: SupervisorState) -> dict:
     text = state.get("question", "").lower()
 
     if any(kw in text for kw in [
+        "資金", "キャッシュ", "収支", "試算表",
+        "資金繰り", "インボイス", "経費", "利益", "予測",
+    ]):
+        route = "cash_flow"
+
+    elif any(kw in text for kw in [
         "進捗", "プロジェクト", "タスク", "工程", "フェーズ",
         "遅延", "担当", "アサイン", "スケジュール", "期限",
         "稼働", "過負荷", "何が残っている", "間に合う",
     ]):
         route = "project"
 
-    elif any(kw in text for kw in ["取引", "売上", "件数", "残高", "ユーザー", "kpi", "金額"]):
+    elif any(kw in text for kw in [
+        "取引", "売上", "件数", "残高", "ユーザー", "kpi", "金額",
+    ]):
         route = "sql"
 
     elif any(kw in text for kw in ["不正", "アラート", "フラグ", "fraud"]):
@@ -145,19 +141,23 @@ def route_question(state: SupervisorState) -> dict:
     return {"route": route}
 
 
+# ===== エージェント実行 =====
 async def execute_agent(state: SupervisorState) -> dict:
     """選択されたエージェントを実行する"""
     route      = state["route"]
     question   = state["question"]
     session_id = state["session_id"]
 
-    # ★ セキュリティ検査（全ルート共通・入口で必ず実行）
     security_error = check_prompt_security(question)
     if security_error:
         return {"result": security_error}
 
     try:
-        if route == "project":
+        if route == "cash_flow":
+            from app.agents.cash_flow_agent import run_cash_flow_agent
+            result = await run_cash_flow_agent(question, session_id)
+
+        elif route == "project":
             from app.agents.project_agent import run_project_agent
             result = await run_project_agent(question, session_id)
 

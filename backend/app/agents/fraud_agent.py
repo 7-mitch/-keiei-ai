@@ -174,61 +174,110 @@ async def layer2_pattern_recognition(state: FraudDetectionState) -> dict:
 
 # ===== Layer 3: LLM判定 =====
 async def layer3_llm_judgment(state: FraudDetectionState) -> dict:
-    """Layer3: LLM判定（クレジット復旧後に本実装）"""
-    rule_score    = state["rule_result"].get("score", 0)
-    pattern_score = state["pattern_result"].get("score", 0)
-    combined      = (rule_score + pattern_score) / 2
+    """
+    Claude Sonnetで取引の不正リスクを判定する
+    Layer1・Layer2の結果を踏まえて総合的に判断
+    """
+    try:
+        rule_result    = state["rule_result"]
+        pattern_result = state["pattern_result"]
 
-    is_fraud   = combined >= 0.4
-    risk_score = combined
-    severity   = "critical" if combined >= 0.8 else \
-                 "high"     if combined >= 0.6 else \
-                 "medium"   if combined >= 0.4 else "low"
+        system_prompt = """あなたは金融不正検知の専門家AIです。
+取引情報とルールベース・パターン認識の結果を踏まえ、不正リスクを判定してください。
 
-    result = {
-        "is_fraud":   is_fraud,
-        "risk_score": risk_score,
-        "severity":   severity,
-        "reasoning":  f"ルールスコア:{rule_score:.2f} パターンスコア:{pattern_score:.2f}（LLM判定は一時スキップ）",
-    }
-    print(f" Layer3 スキップ: score={risk_score:.2f}")
-    return {"llm_result": result}
+以下のJSON形式のみで回答してください：
+{
+  "is_fraud": true/false,
+  "risk_score": 0.0〜1.0,
+  "severity": "low"/"medium"/"high"/"critical",
+  "reasoning": "判定理由を100文字以内で"
+}"""
+
+        user_message = f"""取引情報：
+- 金額: {state['amount']:,}円
+- 種別: {state['transaction_type']}
+- 説明: {state.get('description', 'なし')}
+- 日時: {state['created_at']}
+
+Layer1（ルールベース）：
+- フラグ: {rule_result.get('flags', [])}
+- スコア: {rule_result.get('score', 0):.2f}
+
+Layer2（パターン認識）：
+- 類似不正パターン数: {len(pattern_result.get('similar_patterns', []))}件
+- 最大類似度: {pattern_result.get('max_similarity', 0):.3f}
+
+上記を踏まえて不正リスクを判定してください。"""
+
+        response = await llm.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_message),
+        ])
+
+        # JSONパース
+        import re
+        content = response.content
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+        else:
+            raise ValueError("JSON形式で返答がありませんでした")
+
+        print(f" Layer3 LLM判定: is_fraud={result['is_fraud']} score={result['risk_score']:.2f}")
+        return {"llm_result": result}
+
+    except Exception as e:
+        print(f" Layer3 エラー: {e} → フォールバック")
+        # エラー時はLayer1・2の平均で代替
+        rule_score    = state["rule_result"].get("score", 0)
+        pattern_score = state["pattern_result"].get("score", 0)
+        combined      = (rule_score + pattern_score) / 2
+        return {"llm_result": {
+            "is_fraud":   combined >= 0.4,
+            "risk_score": combined,
+            "severity":   "medium" if combined >= 0.4 else "low",
+            "reasoning":  f"LLMエラーのためフォールバック: {str(e)[:50]}",
+        }}
 
 # ===== Layer 4: ML判定 =====
 def layer4_ml_judgment(state: FraudDetectionState) -> dict:
-    """
-    scikit-learnの学習済みモデルで判定する
-    モデルがない場合はルールベーススコアで代替
-    """
     try:
         import joblib
         import numpy as np
         import os
+        from datetime import datetime
 
         model_path = "app/agents/fraud_model.pkl"
 
         if os.path.exists(model_path):
-            model    = joblib.load(model_path)
+            model = joblib.load(model_path)
+
+            amount = state["amount"]
+            try:
+                dt   = datetime.fromisoformat(state["created_at"])
+                hour = dt.hour
+            except Exception:
+                hour = 12
+
             features = np.array([[
-                state["amount"],
+                amount,
                 1 if state["transaction_type"] == "debit" else 0,
+                hour,
                 state["rule_result"].get("score", 0),
-                state["pattern_result"].get("max_similarity", 0),
+                state["pattern_result"].get("score", 0),
+                np.log1p(amount),
+                1 if 0 <= hour < 5 else 0,
+                1 if amount >= 1_000_000 else 0,
             ]])
+
             proba  = model.predict_proba(features)[0][1]
-            result = {
-                "score":      float(proba),
-                "model_used": True,
-            }
+            result = {"score": float(proba), "model_used": True}
         else:
-            # モデルがない場合はルール+パターンスコアの平均
             rule_score    = state["rule_result"].get("score", 0)
             pattern_score = state["pattern_result"].get("score", 0)
-            score         = (rule_score + pattern_score) / 2
-            result        = {
-                "score":      score,
+            result = {
+                "score":      (rule_score + pattern_score) / 2,
                 "model_used": False,
-                "note":       "学習済みモデルなし・ルールスコアで代替",
             }
 
         print(f" Layer4 ML判定: score={result['score']:.3f}")
@@ -237,7 +286,6 @@ def layer4_ml_judgment(state: FraudDetectionState) -> dict:
     except Exception as e:
         print(f" Layer4 エラー: {e}")
         return {"ml_result": {"score": 0.0, "error": str(e)}}
-
 
 # ===== 最終判定・DB保存 =====
 async def finalize_judgment(state: FraudDetectionState) -> dict:
