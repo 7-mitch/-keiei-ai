@@ -4,7 +4,8 @@ FROM python:3.11-slim
 ENV PYTHONIOENCODING=utf-8
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
-ENV HF_CACHE_DIR=/tmp/huggingface  
+ENV HF_CACHE_DIR=/tmp/huggingface 
+ENV HF_HUB_DISABLE_SYMLINKS_WARNING=1 
 
 WORKDIR /app
 COPY requirements.txt .

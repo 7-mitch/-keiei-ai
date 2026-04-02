@@ -1,15 +1,118 @@
 """
-#95 Playwright Web収集エージェント（完全版）
-金融ニュース・市場情報・競合情報・SNSインサイトを自動収集する
+web_agent.py — Web収集エージェント（業界別法令・ニュース自動収集 + RAG自動追加）
+機能:
+  - 業界別法令サイト自動巡回（厚労省・国交省・経産省等）
+  - 金融ニュース・市場情報収集
+  - SNSインサイト収集（Reddit・Zenn・Qiita）
+  - LLM要約生成
+  - RAGへの自動追加
+  - 定期実行対応
 """
 import asyncio
 import json
+import os
 import re
 from datetime import datetime
 from playwright.async_api import async_playwright
 from app.db.connection import get_conn
 
-# ===== 収集対象サイト =====
+# ===== LLM環境切り替え =====
+_env = os.getenv("ENVIRONMENT", "development")
+
+if _env == "production":
+    from langchain_anthropic import ChatAnthropic
+    llm = ChatAnthropic(model="claude-sonnet-4-20250514", max_tokens=1024)
+else:
+    from langchain_ollama import ChatOllama
+    llm = ChatOllama(
+        model    = "qwen3:8b",
+        base_url = "http://host.docker.internal:11434",
+    )
+
+
+# ===== 業界別法令サイト =====
+REGULATORY_SOURCES = {
+    "介護": [
+        {
+            "name":     "厚生労働省（介護保険）",
+            "url":      "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/hukushi_kaigo/kaigo_koureisha/index.html",
+            "selector": "div.m-listLink a",
+            "type":     "regulatory_care",
+        },
+        {
+            "name":     "厚生労働省（介護報酬）",
+            "url":      "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/hukushi_kaigo/kaigo_koureisha/housyu/index.html",
+            "selector": "div.m-listLink a",
+            "type":     "regulatory_care",
+        },
+    ],
+    "医療": [
+        {
+            "name":     "厚生労働省（医療）",
+            "url":      "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/index.html",
+            "selector": "div.m-listLink a",
+            "type":     "regulatory_medical",
+        },
+        {
+            "name":     "厚生労働省（診療報酬）",
+            "url":      "https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iryou/hourei/index.html",
+            "selector": "div.m-listLink a",
+            "type":     "regulatory_medical",
+        },
+    ],
+    "建設": [
+        {
+            "name":     "国土交通省（建設業）",
+            "url":      "https://www.mlit.go.jp/totikensangyo/const/index.html",
+            "selector": "div.content-area a",
+            "type":     "regulatory_construction",
+        },
+        {
+            "name":     "国土交通省（建築基準法）",
+            "url":      "https://www.mlit.go.jp/jutakukentiku/build/index.html",
+            "selector": "div.content-area a",
+            "type":     "regulatory_construction",
+        },
+    ],
+    "製造": [
+        {
+            "name":     "経済産業省（製造業）",
+            "url":      "https://www.meti.go.jp/policy/mono_info_service/mono/index.html",
+            "selector": "div.contents-body a",
+            "type":     "regulatory_manufacturing",
+        },
+        {
+            "name":     "経済産業省（カーボンニュートラル）",
+            "url":      "https://www.meti.go.jp/policy/energy_environment/global_warming/index.html",
+            "selector": "div.contents-body a",
+            "type":     "regulatory_manufacturing",
+        },
+    ],
+    "法律": [
+        {
+            "name":     "e-Gov法令検索",
+            "url":      "https://laws.e-gov.go.jp/",
+            "selector": "a.law-title",
+            "type":     "regulatory_legal",
+        },
+    ],
+    "経理": [
+        {
+            "name":     "国税庁（インボイス）",
+            "url":      "https://www.nta.go.jp/taxes/shiraberu/zeimokubetsu/shohi/keigenzeiritsu/invoice.htm",
+            "selector": "div.content-area a",
+            "type":     "regulatory_accounting",
+        },
+        {
+            "name":     "国税庁（電帳法）",
+            "url":      "https://www.nta.go.jp/law/joho-zeikaishaku/sonota/jirei/index.htm",
+            "selector": "div.content-area a",
+            "type":     "regulatory_accounting",
+        },
+    ],
+}
+
+# ===== 金融ニュース =====
 NEWS_SOURCES = [
     {
         "name":     "日本銀行",
@@ -31,17 +134,11 @@ NEWS_SOURCES = [
     },
 ]
 
-# ===== SNS収集対象 =====
+# ===== SNSインサイト =====
 SNS_SOURCES = [
     {
         "name":     "Reddit - AI_Agents",
         "url":      "https://www.reddit.com/r/AI_Agents/top/?t=week",
-        "selector": "a[data-click-id='body']",
-        "type":     "sns_insight",
-    },
-    {
-        "name":     "Reddit - MachineLearning",
-        "url":      "https://www.reddit.com/r/MachineLearning/top/?t=week",
         "selector": "a[data-click-id='body']",
         "type":     "sns_insight",
     },
@@ -66,19 +163,19 @@ async def scrape_page(url: str, selector: str) -> list[dict]:
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+                headless = True,
+                args     = ["--no-sandbox", "--disable-dev-shm-usage"],
             )
             page = await browser.new_page(
-                user_agent=(
+                user_agent = (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/120.0.0.0 Safari/537.36"
                 )
             )
             await page.goto(url, timeout=30000, wait_until="domcontentloaded")
-            # 動的コンテンツ読み込み待機
             await page.wait_for_timeout(2000)
+
             elements = await page.query_selector_all(selector)
             for el in elements[:10]:
                 text = await el.inner_text()
@@ -89,8 +186,10 @@ async def scrape_page(url: str, selector: str) -> list[dict]:
                         "url":   href or "",
                     })
             await browser.close()
+
     except Exception as e:
-        print(f"スクレイピングエラー ({url}): {e}")
+        print(f"[WEB] スクレイピングエラー ({url}): {e}")
+
     return results
 
 
@@ -99,8 +198,8 @@ async def collect_url(url: str) -> dict:
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+                headless = True,
+                args     = ["--no-sandbox", "--disable-dev-shm-usage"],
             )
             page = await browser.new_page()
             await page.goto(url, timeout=30000, wait_until="domcontentloaded")
@@ -113,11 +212,12 @@ async def collect_url(url: str) -> dict:
                 }
             """)
             await browser.close()
+
             await save_to_db(
-                url=url,
-                status="success",
-                data_type="custom_url",
-                content=content,
+                url       = url,
+                status    = "success",
+                data_type = "custom_url",
+                content   = content,
             )
             return {
                 "title":   title,
@@ -125,6 +225,7 @@ async def collect_url(url: str) -> dict:
                 "url":     url,
                 "status":  "success",
             }
+
     except Exception as e:
         return {
             "title":   "",
@@ -136,108 +237,225 @@ async def collect_url(url: str) -> dict:
 
 # ===== DB保存 =====
 async def save_to_db(
-    url: str,
-    status: str,
+    url:       str,
+    status:    str,
     data_type: str,
-    content: str,
+    content:   str,
 ) -> None:
     try:
         async with get_conn() as conn:
-            await conn.execute(
-                """
+            await conn.execute("""
                 INSERT INTO web_collection_logs
-                    (url, status, data_type, raw_content, collected_at)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                url,
-                status,
-                data_type,
-                content,
-                datetime.utcnow(),
+                    (url, status, data_type, raw_content, processed_at)
+                VALUES ($1, $2, $3, $4, NOW())
+            """,
+                url, status, data_type, content,
             )
     except Exception as e:
-        print(f"DB保存エラー: {e}")
+        print(f"[WEB] DB保存エラー: {e}")
+
+
+# ===== RAGへの自動追加 =====
+async def add_to_rag(
+    content:  str,
+    source:   str,
+    industry: str | None = None,
+) -> bool:
+    """
+    収集したコンテンツをRAGのベクトルストアに追加する
+    業界が指定された場合は業界別ベクトルストアに追加
+    """
+    try:
+        import os
+        from langchain_community.vectorstores import FAISS
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain.schema import Document
+
+        cache_dir  = os.getenv("HF_CACHE_DIR", "/tmp/huggingface")
+        embeddings = HuggingFaceEmbeddings(
+            model_name    = "intfloat/multilingual-e5-small",
+            cache_folder  = cache_dir,
+            model_kwargs  = {"device": "cpu"},
+            encode_kwargs = {"normalize_embeddings": True},
+        )
+
+        # 業界別フォルダマップ
+        industry_dir_map = {
+            "介護": "care", "医療": "medical", "建設": "construction",
+            "製造": "manufacturing", "法律": "legal",
+        }
+
+        vector_dir = "vector_store"
+        if industry and industry in industry_dir_map:
+            vector_dir = f"vector_store/{industry_dir_map[industry]}"
+
+        doc = Document(
+            page_content = content[:1000],
+            metadata     = {
+                "source":     source,
+                "industry":   industry or "general",
+                "collected":  datetime.now().isoformat(),
+                "type":       "web_collected",
+            },
+        )
+
+        # 既存のベクトルストアに追加
+        if os.path.exists(vector_dir):
+            store = FAISS.load_local(
+                vector_dir,
+                embeddings,
+                allow_dangerous_deserialization = True,
+            )
+            store.add_documents([doc])
+            store.save_local(vector_dir)
+        else:
+            store = FAISS.from_documents([doc], embeddings)
+            os.makedirs(vector_dir, exist_ok=True)
+            store.save_local(vector_dir)
+
+        print(f"[WEB] RAG追加完了: {source} → {vector_dir}")
+        return True
+
+    except Exception as e:
+        print(f"[WEB] RAG追加エラー: {e}")
+        return False
+
+
+# ===== LLM要約生成 =====
+async def summarize_with_llm(
+    articles: list[dict],
+    context:  str = "経営者向け",
+) -> str:
+    """収集した記事をLLMで要約する"""
+    if not articles:
+        return "収集データがありません。"
+
+    lines = [
+        f"【{a.get('source', '不明')}】{a['title']}"
+        for a in articles[:15]
+    ]
+    articles_text = "\n".join(lines)
+
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+        response = await llm.ainvoke([
+            SystemMessage(content=f"""あなたは{context}向けの情報要約AIです。
+収集した記事タイトルから重要なポイントを3〜5点にまとめてください。
+経営判断に役立つ視点で、簡潔に日本語でまとめてください。"""),
+            HumanMessage(content=f"以下の記事を要約してください:\n\n{articles_text}"),
+        ])
+
+        if isinstance(response.content, list):
+            return response.content[0].get("text", "") if response.content else ""
+        return str(response.content)
+
+    except Exception as e:
+        print(f"[WEB] LLM要約エラー: {e}")
+        return f"収集記事:\n{articles_text}"
+
+
+# ===== 業界別法令収集 =====
+async def collect_regulatory(industry: str) -> list[dict]:
+    """指定業界の法令・規制情報を収集してRAGに追加する"""
+    sources  = REGULATORY_SOURCES.get(industry, [])
+    all_results = []
+
+    for source in sources:
+        print(f"[WEB] 法令収集: {source['name']}")
+        articles = await scrape_page(source["url"], source["selector"])
+
+        if articles:
+            content = json.dumps(articles, ensure_ascii=False)
+            await save_to_db(
+                url       = source["url"],
+                status    = "success",
+                data_type = source["type"],
+                content   = content,
+            )
+            # RAGに自動追加
+            await add_to_rag(
+                content  = f"【{source['name']}】\n" + "\n".join(
+                    [a["title"] for a in articles]
+                ),
+                source   = source["name"],
+                industry = industry,
+            )
+            all_results.extend([
+                {**a, "source": source["name"], "type": source["type"]}
+                for a in articles
+            ])
+            print(f"[WEB] {source['name']}: {len(articles)}件収集・RAG追加")
+
+    return all_results
 
 
 # ===== 金融ニュース収集 =====
 async def collect_news() -> list[dict]:
     all_results = []
     for source in NEWS_SOURCES:
-        print(f"収集開始: {source['name']}")
+        print(f"[WEB] ニュース収集: {source['name']}")
         articles = await scrape_page(source["url"], source["selector"])
+
         if articles:
+            content = json.dumps(articles, ensure_ascii=False)
             await save_to_db(
-                url=source["url"],
-                status="success",
-                data_type=source["type"],
-                content=json.dumps(articles, ensure_ascii=False),
+                url       = source["url"],
+                status    = "success",
+                data_type = source["type"],
+                content   = content,
             )
-            print(f"{source['name']}: {len(articles)}件収集")
             all_results.extend([
                 {**a, "source": source["name"], "type": source["type"]}
                 for a in articles
             ])
-        else:
-            await save_to_db(
-                url=source["url"],
-                status="failed",
-                data_type=source["type"],
-                content="",
-            )
+            print(f"[WEB] {source['name']}: {len(articles)}件収集")
+
     return all_results
 
 
 # ===== SNSインサイト収集 =====
 async def collect_sns_insights() -> list[dict]:
-    """
-    RedditやZenn・Qiitaからトレンド記事を収集し
-    AIエンジニア向けインサイトレポートの素材にする
-    """
     all_results = []
     for source in SNS_SOURCES:
-        print(f"SNS収集開始: {source['name']}")
+        print(f"[WEB] SNS収集: {source['name']}")
         articles = await scrape_page(source["url"], source["selector"])
+
         if articles:
             await save_to_db(
-                url=source["url"],
-                status="success",
-                data_type=source["type"],
-                content=json.dumps(articles, ensure_ascii=False),
+                url       = source["url"],
+                status    = "success",
+                data_type = source["type"],
+                content   = json.dumps(articles, ensure_ascii=False),
             )
-            print(f"{source['name']}: {len(articles)}件収集")
             all_results.extend([
                 {**a, "source": source["name"], "type": source["type"]}
                 for a in articles
             ])
-        else:
-            await save_to_db(
-                url=source["url"],
-                status="failed",
-                data_type=source["type"],
-                content="",
-            )
+
     return all_results
 
 
-# ===== インサイトレポート生成 =====
-async def generate_insight_report(articles: list[dict]) -> str:
+# ===== 定期実行（毎朝自動収集）=====
+async def daily_collection() -> dict:
     """
-    収集したSNS記事からLLMでインサイトレポートを生成する
-    （Gemini / OpenAI API と接続して使用）
+    毎朝実行する全業界の法令・ニュース自動収集
+    Cron: 0 6 * * * → 毎朝6時に実行
     """
-    if not articles:
-        return "収集データがありません。"
+    print(f"[WEB] 定期収集開始: {datetime.now()}")
+    results = {}
 
-    lines = [
-        f"【{a['source']}】{a['title']}"
-        for a in articles[:20]
-    ]
-    summary = "\n".join(lines)
+    # 全業界の法令情報を収集
+    for industry in REGULATORY_SOURCES.keys():
+        articles = await collect_regulatory(industry)
+        results[industry] = len(articles)
+        print(f"[WEB] {industry}: {len(articles)}件")
 
-    # TODO: ここにGemini / OpenAI API呼び出しを追加
-    # 例: response = await gemini_client.generate(prompt=summary)
-    # 現時点では収集データをそのまま返す
-    return f"=== SNSインサイトレポート ===\n収集日時: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n{summary}"
+    # 金融ニュース収集
+    news = await collect_news()
+    results["金融ニュース"] = len(news)
+
+    print(f"[WEB] 定期収集完了: {results}")
+    return results
 
 
 # ===== メインエージェント =====
@@ -249,33 +467,70 @@ async def run_web_agent(question: str, session_id: str) -> str:
         urls = re.findall(r'https?://[^\s]+', question)
         if urls:
             result = await collect_url(urls[0])
+            # RAGに自動追加
+            if result["status"] == "success":
+                await add_to_rag(
+                    content = result["content"],
+                    source  = result["url"],
+                )
             return f"【{result['title']}】\n{result['content'][:500]}..."
 
-    # SNSインサイト収集モード
+    # SNSインサイト収集
     if any(kw in q for kw in ["sns", "insight", "インサイト", "トレンド", "reddit", "zenn", "qiita"]):
-        print(f"SNSインサイト収集モード起動: {question}")
         articles = await collect_sns_insights()
-        return await generate_insight_report(articles)
+        summary  = await summarize_with_llm(articles, context="AIエンジニア向け")
+        return f"【AIトレンドインサイト】\n{summary}"
+
+    # 業界別法令収集
+    from app.agents.rag_agent import INDUSTRY_KEYWORDS
+    for industry, keywords in INDUSTRY_KEYWORDS.items():
+        if any(kw in q for kw in keywords):
+            print(f"[WEB] 業界法令収集モード: {industry}")
+            articles = await collect_regulatory(industry)
+            summary  = await summarize_with_llm(
+                articles,
+                context = f"{industry}業界の経営者向け",
+            )
+            return f"【{industry}業界 最新法令・規制情報】\n{summary}"
 
     # 通常の金融ニュース収集
-    print(f"Web収集エージェント起動: {question}")
     articles = await collect_news()
     if not articles:
         return "現在ニュースを収集できませんでした。"
 
-    lines = [f"【{a['source']}】{a['title']}" for a in articles[:5]]
-    return "最新ニュース:\n" + "\n".join(lines)
+    summary = await summarize_with_llm(articles, context="経営者向け")
+    return f"【最新経営情報】\n{summary}"
 
 
-# ===== 単体テスト用 =====
+# ===== 単体テスト =====
 if __name__ == "__main__":
     async def main():
-        # 金融ニュース収集テスト
-        result = await run_web_agent("最新ニュースを教えて", "test_session")
+        print("=== 介護法令収集テスト ===")
+        result = await run_web_agent("介護報酬の最新情報を教えて", "test")
         print(result)
 
-        # SNSインサイト収集テスト
-        result = await run_web_agent("redditのトレンドを収集して", "test_session")
+        print("\n=== 金融ニューステスト ===")
+        result = await run_web_agent("最新の経済ニュースを教えて", "test")
         print(result)
 
     asyncio.run(main())
+```
+
+---
+
+**変更点まとめ**
+```
+✅ 業界別法令サイト追加
+   └── 厚労省（介護・医療）
+   └── 国交省（建設）
+   └── 経産省（製造）
+   └── 国税庁（インボイス・電帳法）
+
+✅ LLM要約を本実装（TODOを解消）
+   └── Claude / Ollama で自動要約
+
+✅ RAGへの自動追加を実装
+   └── 収集後に業界別ベクトルストアに追加
+
+✅ 定期実行関数を追加
+   └── daily_collection() を毎朝6時に呼ぶだけ
