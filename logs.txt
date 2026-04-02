@@ -1,0 +1,282 @@
+{
+    "events": [
+        {
+            "timestamp": 1775133720657,
+            "message": "[LLM] Claude API（本番モード）",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "Traceback (most recent call last):",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "  File \"/usr/local/bin/uvicorn\", line 8, in <module>",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "    sys.exit(main())",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "             ^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/click/core.py\", line 1485, in __call__",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "    return self.main(*args, **kwargs)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "           ^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720658,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/click/core.py\", line 1406, in main",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "    rv = self.invoke(ctx)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "         ^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/click/core.py\", line 1269, in invoke",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "    return ctx.invoke(self.callback, **ctx.params)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/click/core.py\", line 824, in invoke",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "    return callback(*args, **kwargs)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "           ^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720659,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/main.py\", line 433, in main",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "    run(",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/main.py\", line 606, in run",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "    server.run()",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/server.py\", line 75, in run",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py\", line 30, in asyncio_run",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "    return runner.run(main)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "           ^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "  File \"/usr/local/lib/python3.11/asyncio/runners.py\", line 118, in run",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "    return self._loop.run_until_complete(task)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720660,
+            "message": "  File \"uvloop/loop.pyx\", line 1518, in uvloop.loop.Loop.run_until_complete",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/server.py\", line 79, in serve",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "    await self._serve(sockets)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/server.py\", line 86, in _serve",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "    config.load()",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/config.py\", line 441, in load",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "    self.loaded_app = import_from_string(self.app)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "  File \"/usr/local/lib/python3.11/site-packages/uvicorn/importer.py\", line 19, in import_from_string",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "    module = importlib.import_module(module_str)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "  File \"/usr/local/lib/python3.11/importlib/__init__.py\", line 126, in import_module",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720661,
+            "message": "    return _bootstrap._gcd_import(name[level:], package, level)",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"<frozen importlib._bootstrap>\", line 1204, in _gcd_import",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"<frozen importlib._bootstrap>\", line 1176, in _find_and_load",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"<frozen importlib._bootstrap>\", line 1147, in _find_and_load_unlocked",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"<frozen importlib._bootstrap>\", line 690, in _load_unlocked",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"<frozen importlib._bootstrap_external>\", line 940, in exec_module",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"<frozen importlib._bootstrap>\", line 241, in _call_with_frames_removed",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"/app/app/main.py\", line 9, in <module>",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "    from app.api import chat, alert, report, auth, fraud, web, rag, collect",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"/app/app/api/web.py\", line 6, in <module>",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "    from app.agents.web_agent import collect_news, collect_url",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+            "message": "  File \"/app/app/agents/web_agent.py\", line 523",
+            "ingestionTime": 1775133723267
+        },
+        {
+            "timestamp": 1775133720662,
+
+'cp932' codec can't encode character '\u2705' in position 5: illegal multibyte sequence
+            "message": 
