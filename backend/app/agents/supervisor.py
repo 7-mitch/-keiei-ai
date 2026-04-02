@@ -9,6 +9,7 @@ supervisor.py — KEIEI-AI マルチエージェント統括
   - Layer B セキュリティ検査（LLM）統合
   - hr_agent 適性診断・汎用キーワード対応
   - ハイブリッドルーティング（KI+HuggingFace VI）実装
+  - llm_factory に統一（vLLM・QLoRA対応）
 """
 import os
 from typing import TypedDict, Literal
@@ -16,25 +17,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
+from app.core.llm_factory import get_llm
 
-# ===== LLM 環境切り替え =====
-_env = os.getenv("ENVIRONMENT", "development")
-
-if _env == "production":
-    from langchain_anthropic import ChatAnthropic
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2048,
-    )
-    print("[LLM] Claude API（本番モード）")
-else:
-    from langchain_ollama import ChatOllama
-    llm = ChatOllama(
-        model    = "qwen3:8b",
-        base_url = "http://host.docker.internal:11434",
-    )
-    print("[LLM] Ollama Qwen3（ローカルモード）")
-
+llm = get_llm()  # ← これだけでOK・古いif/elseブロックは削除
 
 # ===== State定義 =====
 class SupervisorState(TypedDict):

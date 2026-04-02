@@ -14,20 +14,12 @@ import os
 import re
 from datetime import datetime
 from playwright.async_api import async_playwright
+from langchain_core.messages import HumanMessage, SystemMessage
+from app.core.llm_factory import get_llm
 from app.db.connection import get_conn
 
-# ===== LLM環境切り替え =====
-_env = os.getenv("ENVIRONMENT", "development")
-
-if _env == "production":
-    from langchain_anthropic import ChatAnthropic
-    llm = ChatAnthropic(model="claude-sonnet-4-20250514", max_tokens=1024)
-else:
-    from langchain_ollama import ChatOllama
-    llm = ChatOllama(
-        model    = "qwen3:8b",
-        base_url = "http://host.docker.internal:11434",
-    )
+# ===== LLM =====
+llm = get_llm()
 
 
 # ===== 業界別法令サイト =====
@@ -261,12 +253,7 @@ async def add_to_rag(
     source:   str,
     industry: str | None = None,
 ) -> bool:
-    """
-    収集したコンテンツをRAGのベクトルストアに追加する
-    業界が指定された場合は業界別ベクトルストアに追加
-    """
     try:
-        import os
         from langchain_community.vectorstores import FAISS
         from langchain_huggingface import HuggingFaceEmbeddings
         from langchain.schema import Document
@@ -279,7 +266,6 @@ async def add_to_rag(
             encode_kwargs = {"normalize_embeddings": True},
         )
 
-        # 業界別フォルダマップ
         industry_dir_map = {
             "介護": "care", "医療": "medical", "建設": "construction",
             "製造": "manufacturing", "法律": "legal",
@@ -292,14 +278,13 @@ async def add_to_rag(
         doc = Document(
             page_content = content[:1000],
             metadata     = {
-                "source":     source,
-                "industry":   industry or "general",
-                "collected":  datetime.now().isoformat(),
-                "type":       "web_collected",
+                "source":    source,
+                "industry":  industry or "general",
+                "collected": datetime.now().isoformat(),
+                "type":      "web_collected",
             },
         )
 
-        # 既存のベクトルストアに追加
         if os.path.exists(vector_dir):
             store = FAISS.load_local(
                 vector_dir,
@@ -326,7 +311,6 @@ async def summarize_with_llm(
     articles: list[dict],
     context:  str = "経営者向け",
 ) -> str:
-    """収集した記事をLLMで要約する"""
     if not articles:
         return "収集データがありません。"
 
@@ -337,7 +321,6 @@ async def summarize_with_llm(
     articles_text = "\n".join(lines)
 
     try:
-        from langchain_core.messages import HumanMessage, SystemMessage
         response = await llm.ainvoke([
             SystemMessage(content=f"""あなたは{context}向けの情報要約AIです。
 収集した記事タイトルから重要なポイントを3〜5点にまとめてください。
@@ -356,8 +339,7 @@ async def summarize_with_llm(
 
 # ===== 業界別法令収集 =====
 async def collect_regulatory(industry: str) -> list[dict]:
-    """指定業界の法令・規制情報を収集してRAGに追加する"""
-    sources  = REGULATORY_SOURCES.get(industry, [])
+    sources     = REGULATORY_SOURCES.get(industry, [])
     all_results = []
 
     for source in sources:
@@ -365,14 +347,12 @@ async def collect_regulatory(industry: str) -> list[dict]:
         articles = await scrape_page(source["url"], source["selector"])
 
         if articles:
-            content = json.dumps(articles, ensure_ascii=False)
             await save_to_db(
                 url       = source["url"],
                 status    = "success",
                 data_type = source["type"],
-                content   = content,
+                content   = json.dumps(articles, ensure_ascii=False),
             )
-            # RAGに自動追加
             await add_to_rag(
                 content  = f"【{source['name']}】\n" + "\n".join(
                     [a["title"] for a in articles]
@@ -397,12 +377,11 @@ async def collect_news() -> list[dict]:
         articles = await scrape_page(source["url"], source["selector"])
 
         if articles:
-            content = json.dumps(articles, ensure_ascii=False)
             await save_to_db(
                 url       = source["url"],
                 status    = "success",
                 data_type = source["type"],
-                content   = content,
+                content   = json.dumps(articles, ensure_ascii=False),
             )
             all_results.extend([
                 {**a, "source": source["name"], "type": source["type"]}
@@ -437,21 +416,16 @@ async def collect_sns_insights() -> list[dict]:
 
 # ===== 定期実行（毎朝自動収集）=====
 async def daily_collection() -> dict:
-    """
-    毎朝実行する全業界の法令・ニュース自動収集
-    Cron: 0 6 * * * → 毎朝6時に実行
-    """
+    """毎朝6時に実行: 0 6 * * *"""
     print(f"[WEB] 定期収集開始: {datetime.now()}")
     results = {}
 
-    # 全業界の法令情報を収集
     for industry in REGULATORY_SOURCES.keys():
-        articles = await collect_regulatory(industry)
+        articles          = await collect_regulatory(industry)
         results[industry] = len(articles)
         print(f"[WEB] {industry}: {len(articles)}件")
 
-    # 金融ニュース収集
-    news = await collect_news()
+    news                  = await collect_news()
     results["金融ニュース"] = len(news)
 
     print(f"[WEB] 定期収集完了: {results}")
@@ -467,7 +441,6 @@ async def run_web_agent(question: str, session_id: str) -> str:
         urls = re.findall(r'https?://[^\s]+', question)
         if urls:
             result = await collect_url(urls[0])
-            # RAGに自動追加
             if result["status"] == "success":
                 await add_to_rag(
                     content = result["content"],
@@ -514,23 +487,3 @@ if __name__ == "__main__":
         print(result)
 
     asyncio.run(main())
-```
-
----
-
-**変更点まとめ**
-```
-✅ 業界別法令サイト追加
-   └── 厚労省（介護・医療）
-   └── 国交省（建設）
-   └── 経産省（製造）
-   └── 国税庁（インボイス・電帳法）
-
-✅ LLM要約を本実装（TODOを解消）
-   └── Claude / Ollama で自動要約
-
-✅ RAGへの自動追加を実装
-   └── 収集後に業界別ベクトルストアに追加
-
-✅ 定期実行関数を追加
-   └── daily_collection() を毎朝6時に呼ぶだけ

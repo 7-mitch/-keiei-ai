@@ -16,9 +16,9 @@ class Settings(BaseSettings):
     langchain_project:     str = "keiei-ai"
 
     # JWT認証
-    secret_key:            str = "change-me-in-production"
-    algorithm:             str = "HS256"
-    access_token_expire:   int = 480
+    secret_key:          str = "change-me-in-production"
+    algorithm:           str = "HS256"
+    access_token_expire: int = 480
 
     # CORS
     allowed_origins: list[str] = [
@@ -27,18 +27,30 @@ class Settings(BaseSettings):
     ]
 
     # 環境
-    environment:           str = "development"
+    # development → Ollama（ローカル・無料・完全オンプレ）
+    # production  → Claude API（クラウド・外部公開）
+    # vllm        → vLLM（オンプレ高速・GPU必須）
+    # qlora       → DPOファインチューニング済みモデル（vLLM経由）
+    environment: str = "development"
 
     # Redis
-    redis_url:             str = "redis://localhost:6379"
+    redis_url: str = "redis://localhost:6379"
 
-    # GCP（追加）
+    # GCP
     gcp_project_id:                 str = ""
     bq_dataset_id:                  str = "keiei_ai_dw"
     google_application_credentials: str = ""
 
-    # HuggingFace キャッシュ
-    hf_cache_dir:          str = "/tmp/huggingface"  # ← 追加
+    # HuggingFace
+    hf_cache_dir: str = "/tmp/huggingface"
+
+    # vLLM設定（ENVIRONMENT=vllm または qlora の場合に使用）
+    vllm_base_url:  str = "http://localhost:8001/v1"
+    vllm_model:     str = "Qwen/Qwen3-8B"
+
+    # QLoRA/DPOファインチューニング済みモデル
+    # ENVIRONMENT=qlora の場合に vllm_model をこちらに切り替える
+    qlora_model:    str = "your-hf-username/keiei-ai-qwen3-dpo"
 
     class Config:
         env_file = ".env"

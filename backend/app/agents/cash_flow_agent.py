@@ -6,54 +6,31 @@ cash_flow_agent.py — 資金繰り監視・キャッシュフロー予測エー
   - インボイス・電帳法対応アラート
   - 経営者向け要約レポート生成
 """
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
+from app.core.llm_factory import get_llm
 from app.db.connection import get_conn
-from app.db.audit import record_audit
 
-# ===== LLM 環境切り替え =====
-_env = os.getenv("ENVIRONMENT", "development")
-
-if _env == "production":
-    from langchain_anthropic import ChatAnthropic
-    llm = ChatAnthropic(
-        model      = "claude-sonnet-4-20250514",
-        max_tokens = 1024,
-    )
-else:
-    from langchain_ollama import ChatOllama
-    llm = ChatOllama(
-        model    = "qwen3:8b",
-        base_url = "http://host.docker.internal:11434",
-    )
+# ===== LLM =====
+llm = get_llm()
 
 
 # ===== State定義 =====
 class CashFlowState(TypedDict):
-    question:       str
-    session_id:     str
-    account_id:     int
-
-    # 集計結果
-    monthly_summary: dict   # 月次収支
-    balance_now:     float  # 現在残高
-    forecast_30d:    dict   # 30日予測
-
-    # アラート
+    question:        str
+    session_id:      str
+    account_id:      int
+    monthly_summary: dict
+    balance_now:     float
+    forecast_30d:    dict
     alerts:          list
-
-    # 最終レポート
     report:          str
 
 
 # ===== Step1: 月次収支集計 =====
 async def step1_monthly_summary(state: CashFlowState) -> dict:
-    """
-    直近3ヶ月の収支を集計する
-    """
     try:
         async with get_conn() as conn:
             rows = await conn.fetch("""
@@ -78,7 +55,6 @@ async def step1_monthly_summary(state: CashFlowState) -> dict:
             else:
                 summary[month_key]["expense"] += float(row["total"])
 
-        # 純利益を計算
         for month in summary:
             summary[month]["net"] = (
                 summary[month]["income"] - summary[month]["expense"]
@@ -94,9 +70,6 @@ async def step1_monthly_summary(state: CashFlowState) -> dict:
 
 # ===== Step2: 現在残高取得 =====
 async def step2_current_balance(state: CashFlowState) -> dict:
-    """
-    現在の口座残高を取得する
-    """
     try:
         async with get_conn() as conn:
             row = await conn.fetchrow("""
@@ -118,24 +91,17 @@ async def step2_current_balance(state: CashFlowState) -> dict:
 
 # ===== Step3: 30日キャッシュフロー予測 =====
 async def step3_forecast(state: CashFlowState) -> dict:
-    """
-    過去3ヶ月の平均から30日後の残高を予測する
-    """
-    summary  = state["monthly_summary"]
-    balance  = state["balance_now"]
+    summary = state["monthly_summary"]
+    balance = state["balance_now"]
 
     if not summary:
         return {"forecast_30d": {"predicted_balance": balance, "risk": "データ不足"}}
 
-    # 月次平均収支を計算
     avg_income  = sum(v["income"]  for v in summary.values()) / len(summary)
     avg_expense = sum(v["expense"] for v in summary.values()) / len(summary)
     avg_net     = avg_income - avg_expense
+    predicted   = balance + avg_net
 
-    # 30日後の予測残高（月次の比例配分）
-    predicted = balance + (avg_net * 30 / 30)
-
-    # リスク判定
     if predicted < 0:
         risk = "critical"
     elif predicted < avg_expense * 0.5:
@@ -146,7 +112,7 @@ async def step3_forecast(state: CashFlowState) -> dict:
         risk = "low"
 
     forecast = {
-        "predicted_balance": round(predicted, 0),
+        "predicted_balance":   round(predicted, 0),
         "avg_monthly_income":  round(avg_income, 0),
         "avg_monthly_expense": round(avg_expense, 0),
         "avg_monthly_net":     round(avg_net, 0),
@@ -159,14 +125,9 @@ async def step3_forecast(state: CashFlowState) -> dict:
 
 # ===== Step4: アラート生成 =====
 async def step4_alerts(state: CashFlowState) -> dict:
-    """
-    資金繰りリスク・法令対応アラートを生成する
-    """
     alerts   = []
     forecast = state["forecast_30d"]
-    balance  = state["balance_now"]
 
-    # 資金繰りアラート
     risk = forecast.get("risk", "low")
     if risk == "critical":
         alerts.append({
@@ -181,7 +142,6 @@ async def step4_alerts(state: CashFlowState) -> dict:
             "message":  "資金残高が月次経費の50%を下回る見込みです。資金調達を検討してください。",
         })
 
-    # 試算表遅延アラート（直近30日以内に取引がない場合）
     try:
         async with get_conn() as conn:
             row = await conn.fetchrow("""
@@ -201,7 +161,6 @@ async def step4_alerts(state: CashFlowState) -> dict:
     except Exception as e:
         print(f"[CashFlow] アラート取得エラー: {e}")
 
-    # 2026年インボイス対応アラート
     alerts.append({
         "type":     "invoice",
         "severity": "info",
@@ -214,22 +173,17 @@ async def step4_alerts(state: CashFlowState) -> dict:
 
 # ===== Step5: LLMレポート生成 =====
 async def step5_report(state: CashFlowState) -> dict:
-    """
-    集計結果をもとにClaude/Ollamaが経営者向けレポートを生成する
-    """
     summary  = state["monthly_summary"]
     balance  = state["balance_now"]
     forecast = state["forecast_30d"]
     alerts   = state["alerts"]
     question = state["question"]
 
-    # アラートサマリー
     alert_text = "\n".join([
         f"[{a['severity'].upper()}] {a['message']}"
         for a in alerts
     ]) or "特になし"
 
-    # 月次サマリー
     monthly_text = "\n".join([
         f"{month}: 収入{v['income']:,.0f}円 / 支出{v['expense']:,.0f}円 / 純利益{v['net']:,.0f}円"
         for month, v in sorted(summary.items(), reverse=True)
@@ -280,20 +234,17 @@ async def step5_report(state: CashFlowState) -> dict:
 # ===== グラフ構築 =====
 def build_cash_flow_agent():
     g = StateGraph(CashFlowState)
-
     g.add_node("step1", step1_monthly_summary)
     g.add_node("step2", step2_current_balance)
     g.add_node("step3", step3_forecast)
     g.add_node("step4", step4_alerts)
     g.add_node("step5", step5_report)
-
     g.add_edge(START,   "step1")
     g.add_edge("step1", "step2")
     g.add_edge("step2", "step3")
     g.add_edge("step3", "step4")
     g.add_edge("step4", "step5")
     g.add_edge("step5", END)
-
     return g.compile()
 
 cash_flow_agent = build_cash_flow_agent()
@@ -305,7 +256,7 @@ async def run_cash_flow_agent(question: str, session_id: str) -> str:
     state = await cash_flow_agent.ainvoke({
         "question":        question,
         "session_id":      session_id,
-        "account_id":      1,  # TODO: セッションからaccount_idを取得
+        "account_id":      1,
         "monthly_summary": {},
         "balance_now":     0.0,
         "forecast_30d":    {},

@@ -1,3 +1,8 @@
+"""
+security.py — 認証・セキュリティ
+Gate1: キーワード検知
+Gate2: LLM（get_llm_light）プロンプトインジェクション検査
+"""
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import bcrypt
@@ -5,17 +10,20 @@ from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
-import os
+from app.core.llm_factory import get_llm_light
 
 bearer_scheme = HTTPBearer()
+
 
 def hash_password(password: str) -> str:
     """パスワードをハッシュ化する"""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
+
 def verify_password(plain: str, hashed: str) -> bool:
     """パスワードを検証する"""
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
 
 def create_access_token(data: dict[str, Any]) -> str:
     """JWTトークンを発行する"""
@@ -27,6 +35,7 @@ def create_access_token(data: dict[str, Any]) -> str:
         settings.secret_key,
         algorithm=settings.algorithm,
     )
+
 
 def decode_token(token: str) -> dict[str, Any]:
     """JWTトークンを検証・デコードする"""
@@ -43,11 +52,13 @@ def decode_token(token: str) -> dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> dict[str, Any]:
     """現在のログインユーザーを取得する（依存性注入）"""
     return decode_token(credentials.credentials)
+
 
 def require_role(*roles: str):
     async def check_role(
@@ -61,31 +72,18 @@ def require_role(*roles: str):
         return current_user
     return check_role
 
+
 # ===== Layer B: LLMプロンプトインジェクション検査 =====
 
-_env = os.getenv("ENVIRONMENT", "development")
-
-def _get_security_llm():
-    if _env == "production":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model      = "claude-haiku-4-5-20251001",
-            max_tokens = 100,
-            temperature= 0,
-        )
-    else:
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model    = "qwen3:8b",
-            base_url = "http://host.docker.internal:11434",
-        )
-
 async def check_prompt_injection_llm(question: str) -> dict:
-    """LLMでプロンプトインジェクションを検査する"""
+    """
+    LLMでプロンプトインジェクションを検査する
+    get_llm_light() を使用（軽量・高速・vLLM/QLoRA対応）
+    """
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        llm = _get_security_llm()
+        llm = get_llm_light()
 
         response = await llm.ainvoke([
             SystemMessage(content="""あなたはAIセキュリティ検査システムです。
