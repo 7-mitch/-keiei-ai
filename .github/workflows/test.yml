@@ -1,0 +1,61 @@
+name: Test KEIEI-AI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ===== バックエンドテスト =====
+  test-backend:
+    name: Backend Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python セットアップ
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: 依存関係インストール
+        run: |
+          pip install pytest pytest-asyncio httpx fastapi
+          pip install pydantic pydantic-settings python-jose bcrypt
+
+      - name: 型チェック（pyflakes）
+        run: |
+          pip install pyflakes
+          python -m pyflakes backend/app/core/
+          python -m pyflakes backend/app/agents/
+
+      - name: インポートチェック
+        run: |
+          cd backend
+          python -c "from app.core.config import settings; print('config OK')"
+          python -c "from app.core.security import hash_password; print('security OK')"
+          python -c "from app.core.llm_factory import get_llm; print('llm_factory OK')"
+
+  # ===== フロントエンドテスト =====
+  test-frontend:
+    name: Frontend Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 依存関係インストール
+        run: cd frontend && npm ci
+
+      - name: TypeScript 型チェック
+        run: cd frontend && npx tsc --noEmit
+
+      - name: ESLint チェック
+        run: cd frontend && npm run lint
