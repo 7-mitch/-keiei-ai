@@ -7,7 +7,6 @@ production  → Claude API（クラウド）
 vllm        → vLLM（オンプレ高速・GPU）
 qlora       → DPOファインチューニング済みモデル（vLLM経由）
 """
-import os
 from functools import lru_cache
 from app.core.config import settings
 
@@ -33,9 +32,9 @@ def get_llm(max_tokens: int = 2048):
         from langchain_openai import ChatOpenAI
         print(f"[LLM] vLLM（{settings.vllm_model}）")
         return ChatOpenAI(
-            base_url  = settings.vllm_base_url,
-            api_key   = "dummy",  # vLLMはAPIキー不要
-            model     = settings.vllm_model,
+            base_url   = settings.vllm_base_url,
+            api_key    = "dummy",
+            model      = settings.vllm_model,
             max_tokens = max_tokens,
         )
 
@@ -43,9 +42,9 @@ def get_llm(max_tokens: int = 2048):
         from langchain_openai import ChatOpenAI
         print(f"[LLM] QLoRA/DPOモデル（{settings.qlora_model}）")
         return ChatOpenAI(
-            base_url  = settings.vllm_base_url,
-            api_key   = "dummy",
-            model     = settings.qlora_model,
+            base_url   = settings.vllm_base_url,
+            api_key    = "dummy",
+            model      = settings.qlora_model,
             max_tokens = max_tokens,
         )
 
@@ -68,10 +67,10 @@ def get_llm_light():
     if env == "production":
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(
-            model      = "claude-haiku-4-5-20251001",
-            max_tokens = 100,
-            temperature= 0,
-            api_key    = settings.anthropic_api_key,
+            model       = "claude-haiku-4-5-20251001",
+            max_tokens  = 100,
+            temperature = 0,
+            api_key     = settings.anthropic_api_key,
         )
 
     elif env in ("vllm", "qlora"):
