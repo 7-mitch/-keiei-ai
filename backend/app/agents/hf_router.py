@@ -54,22 +54,17 @@ ROUTE_EXAMPLES = {
         "介護スタッフ 医療スタッフ 現場スタッフ シフト最適化",
         "エンジニア スキルマップ 能力開発 人材育成",
         "レセプト担当 請求担当 経理担当 窓口担当",
+        "請求確認担当者 書類確認 誰が担当 担当業務確認",
     ],
     "web": [
         "市場動向 競合 ニュース トレンド 業界情報",
         "競合他社 市場調査 業界ニュース 最新情報",
         "他社 動向 市場分析 業界レポート",
     ],
-    # generalは明らかに経営・業務と無関係なものだけ
     "general": [
         "こんにちは ありがとう よろしくお願いします 挨拶",
         "天気 食事 趣味 旅行 スポーツ 娯楽 日常会話",
         "意味がわからない 関係ない 全く別の話 雑談",
-    ],
-    "hr": [
-    ...既存の行...
-    "レセプト担当 請求担当 経理担当 窓口担当",
-    "請求確認担当者 書類確認 誰が担当 担当業務確認", 
     ],
 }
 
@@ -82,17 +77,9 @@ GENERAL_PENALTY = 0.88
 # ===== Embeddingモデルのキャッシュ =====
 @lru_cache(maxsize=1)
 def get_embedding_model():
-    """
-    既存の multilingual-e5-small を使う
-    - 追加モデル不要（KEIEI-AIで既にキャッシュ済み）
-    - 100言語対応・日本語に強い
-    - 軽量（133MB）・高速
-    """
     from sentence_transformers import SentenceTransformer
-
     cache_dir = os.getenv("HF_CACHE_DIR", "/tmp/huggingface")
     print("[HF-ROUTER] multilingual-e5-small をロード中...")
-
     model = SentenceTransformer(
         "intfloat/multilingual-e5-small",
         cache_folder = cache_dir,
@@ -104,13 +91,8 @@ def get_embedding_model():
 # ===== ルート代表ベクトルの事前計算 =====
 @lru_cache(maxsize=1)
 def get_route_vectors() -> dict:
-    """
-    各ルートの代表文をベクトル化して平均を取る
-    起動時に1回だけ計算・以降はキャッシュ
-    """
     model = get_embedding_model()
     route_vectors = {}
-
     for route, examples in ROUTE_EXAMPLES.items():
         vecs = model.encode(
             examples,
@@ -121,7 +103,6 @@ def get_route_vectors() -> dict:
         norm = np.linalg.norm(route_vectors[route])
         if norm > 0:
             route_vectors[route] = route_vectors[route] / norm
-
     print(f"[HF-ROUTER] ルートベクトル計算完了: {list(route_vectors.keys())}")
     return route_vectors
 
@@ -133,9 +114,6 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 # ===== スコアにペナルティを適用 =====
 def apply_penalty(scores: dict) -> dict:
-    """
-    general に penalty を付与して誤ルーティングを防ぐ
-    """
     return {
         route: (s * GENERAL_PENALTY if route == "general" else s)
         for route, s in scores.items()
@@ -144,34 +122,23 @@ def apply_penalty(scores: dict) -> dict:
 
 # ===== HuggingFaceによるルーティング =====
 def route_with_hf(question: str) -> str:
-    """
-    multilingual-e5-small のコサイン類似度でルートを決定する
-    APIコストゼロ・外部送信なし・既存キャッシュ活用
-    """
     try:
         model         = get_embedding_model()
         route_vectors = get_route_vectors()
-
         q_vec = model.encode(
             [question],
             normalize_embeddings = True,
             show_progress_bar    = False,
         )[0]
-
         scores = {
             route: cosine_similarity(q_vec, r_vec)
             for route, r_vec in route_vectors.items()
         }
-
-        # general ペナルティ適用
-        scores = apply_penalty(scores)
-
+        scores     = apply_penalty(scores)
         best_route = max(scores, key=lambda r: scores[r])
         best_score = scores[best_route]
-
         print(f"[HF-ROUTER] route={best_route} score={best_score:.3f}")
         return best_route
-
     except Exception as e:
         print(f"[HF-ROUTER] エラー: {e} → general にフォールバック")
         return "general"
@@ -179,42 +146,31 @@ def route_with_hf(question: str) -> str:
 
 # ===== 信頼度付きルーティング =====
 def route_with_hf_scored(question: str) -> dict:
-    """
-    スコア付きでルーティング結果を返す（デバッグ・ベンチマーク用）
-    """
     try:
         model         = get_embedding_model()
         route_vectors = get_route_vectors()
-
         q_vec = model.encode(
             [question],
             normalize_embeddings = True,
             show_progress_bar    = False,
         )[0]
-
         scores = {
             route: cosine_similarity(q_vec, r_vec)
             for route, r_vec in route_vectors.items()
         }
-
-        # general ペナルティ適用
-        scores = apply_penalty(scores)
-
+        scores        = apply_penalty(scores)
         routes_scored = sorted(
             [{"route": r, "score": round(s, 4)} for r, s in scores.items()],
             key     = lambda x: x["score"],
             reverse = True,
         )
-
         top = routes_scored[0]
         print(f"[HF-ROUTER] TOP3: {routes_scored[:3]}")
-
         return {
             "route": top["route"],
             "score": top["score"],
             "all":   routes_scored,
         }
-
     except Exception as e:
         print(f"[HF-ROUTER] エラー: {e}")
         return {"route": "general", "score": 0.0, "all": []}
@@ -222,11 +178,7 @@ def route_with_hf_scored(question: str) -> dict:
 
 # ===== ベンチマーク実行 =====
 def run_benchmark() -> list[dict]:
-    """
-    標準テストセットでルーターの精度を測定する
-    """
     test_cases = [
-        # 明確なケース
         {"q": "資金繰りが厳しい来月どうする",         "expected": "cash_flow"},
         {"q": "プロジェクトの進捗を確認したい",        "expected": "project"},
         {"q": "今月の売上KPIを見せて",               "expected": "sql"},
@@ -234,7 +186,6 @@ def run_benchmark() -> list[dict]:
         {"q": "セキュリティ規程を確認したい",          "expected": "rag"},
         {"q": "スタッフの定着率が下がっている",         "expected": "hr"},
         {"q": "競合他社の動向を調べたい",             "expected": "web"},
-        # 曖昧なケース（業種横断）
         {"q": "誰に任せればいいか",                  "expected": "hr"},
         {"q": "来月の資金が心配",                    "expected": "cash_flow"},
         {"q": "現場の安全管理について教えて",          "expected": "rag"},
@@ -244,10 +195,8 @@ def run_benchmark() -> list[dict]:
         {"q": "介護スタッフの夜勤シフトを最適化したい", "expected": "hr"},
         {"q": "病院のコスト削減方法を教えて",          "expected": "cash_flow"},
     ]
-
     results = []
     correct = 0
-
     for tc in test_cases:
         result = route_with_hf_scored(tc["q"])
         match  = result["route"] == tc["expected"]
@@ -260,7 +209,6 @@ def run_benchmark() -> list[dict]:
             "score":    result["score"],
             "correct":  match,
         })
-
     accuracy = correct / len(test_cases) * 100
     print(f"\n[BENCHMARK] 正解率: {accuracy:.1f}% ({correct}/{len(test_cases)})")
     return results

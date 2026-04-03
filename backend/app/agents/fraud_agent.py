@@ -7,11 +7,10 @@ Layer 4: ML判定（scikit-learn）
 """
 import os
 import json
-from datetime import datetime, timezone
-from typing import TypedDict, Literal
+from datetime import datetime
+from typing import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
-from pydantic import BaseModel
 from app.core.llm_factory import get_llm
 from app.db.connection import get_conn
 from app.db.audit import record_audit
@@ -100,14 +99,13 @@ async def layer2_pattern_recognition(state: FraudDetectionState) -> dict:
             """)
 
         if not past_frauds:
-            print(f" Layer2 パターン認識: 過去の不正データなし")
+            print(" Layer2 パターン認識: 過去の不正データなし")
             return {"pattern_result": {
                 "similar_patterns": [],
                 "max_similarity":   0.0,
                 "score":            0.0,
             }}
 
-        # ← キャッシュパスを環境変数化
         model = SentenceTransformer(
             "intfloat/multilingual-e5-large",
             cache_folder = os.getenv("HF_CACHE_DIR", "/tmp/huggingface"),

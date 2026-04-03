@@ -1,16 +1,19 @@
 """
-hr_agent.py — 人事評価・適性診断統合エージェント
-機能:
-  - 人事評価コメント自動生成
-  - 適性診断結果の読み込み・保存
-  - 強みに合わせたアドバイス生成
-  - チームマッチング提案
-  - 個人別3ヶ月ラーニングパス生成
+#93 多層不正検知エージェント
+Layer 1: ルールベース判定
+Layer 2: パターン認識（FAISS）
+Layer 3: LLM判定（Claude）
+Layer 4: ML判定（scikit-learn）
 """
 import os
 import json
+from datetime import datetime
+from typing import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import StateGraph, END, START
 from app.core.llm_factory import get_llm
+from app.db.connection import get_conn
+from app.db.audit import record_audit
 
 llm = get_llm()
 
