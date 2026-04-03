@@ -168,7 +168,7 @@ async def chat_upload(
         result = await supervisor.ainvoke(
             {
                 "question":   final_question,
-                "route":      "",
+                "route":      "file_analysis",
                 "result":     "",
                 "session_id": session_id,
                 "user_role":  user.get("role", "operator"),

@@ -11,6 +11,7 @@ supervisor.py — KEIEI-AI マルチエージェント統括
   - ハイブリッドルーティング（KI+HuggingFace VI）実装
   - llm_factory に統一（vLLM・QLoRA対応）
   - AIGISチェック無効化・誤検知修正
+  - file_analysis ルート追加（ファイルアップロード対応）
 """
 from typing import TypedDict, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -65,7 +66,7 @@ def check_prompt_security(question: str) -> str | None:
 
 # ===== ルーティング判断 =====
 class RouteDecision(BaseModel):
-    route:  Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "general"]
+    route:  Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "file_analysis", "general"]
     reason: str
 
 
@@ -141,6 +142,11 @@ SOFT_KEYWORDS = {
 
 
 def route_question(state: SupervisorState) -> dict:
+    # ===== ファイル解析は強制ルート（キーワード判定をスキップ）=====
+    if state.get("route") == "file_analysis":
+        print("[ROUTE] ファイル解析ルート（強制）")
+        return {"route": "file_analysis"}
+
     text     = state.get("question", "").lower()
     question = state.get("question", "")
 
@@ -193,7 +199,20 @@ async def execute_agent(state: SupervisorState) -> dict:
         return {"result": security_error}
 
     try:
-        if route == "cash_flow":
+        if route == "file_analysis":
+            response = await llm.ainvoke([
+                SystemMessage(content="""あなたは経営支援AIアシスタントです。
+アップロードされたファイルの内容を丁寧に分析し、日本語で回答してください。
+数値データがあれば集計・要約・ビジネスインサイトを提供してください。
+表形式のデータは読みやすく整理して提示してください。"""),
+                HumanMessage(content=question),
+            ])
+            if isinstance(response.content, list):
+                result = response.content[0].get("text", "") if response.content else ""
+            else:
+                result = str(response.content)
+
+        elif route == "cash_flow":
             from app.agents.cash_flow_agent import run_cash_flow_agent
             result = await run_cash_flow_agent(question, session_id)
 
