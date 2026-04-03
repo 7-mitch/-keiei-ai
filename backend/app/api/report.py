@@ -16,7 +16,6 @@ async def get_kpi(
         total_balance = await conn.fetchval("""
             SELECT COALESCE(SUM(balance), 0)
             FROM accounts
-            WHERE status = 'active'
         """)
 
         # 今月の取引統計

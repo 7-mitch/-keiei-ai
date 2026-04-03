@@ -13,10 +13,6 @@ from app.core.config import settings
 
 @lru_cache(maxsize=1)
 def get_llm(max_tokens: int = 2048):
-    """
-    環境変数に応じたLLMインスタンスを返す
-    lru_cache で起動時に1回だけ初期化
-    """
     env = settings.environment
 
     if env == "production":
@@ -53,15 +49,11 @@ def get_llm(max_tokens: int = 2048):
         print("[LLM] Ollama Qwen3（ローカルモード）")
         return ChatOllama(
             model    = "qwen3:8b",
-            base_url = "http://host.docker.internal:11434",
+            base_url = "http://ollama:11434",
         )
 
 
 def get_llm_light():
-    """
-    軽量・高速なLLM（セキュリティ検査・ルーティング用）
-    本番: Claude Haiku / vLLM: 同じモデル / ローカル: Ollama
-    """
     env = settings.environment
 
     if env == "production":
@@ -86,5 +78,5 @@ def get_llm_light():
         from langchain_ollama import ChatOllama
         return ChatOllama(
             model    = "qwen3:8b",
-            base_url = "http://host.docker.internal:11434",
+            base_url = "http://ollama:11434",
         )
