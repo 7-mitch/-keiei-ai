@@ -140,3 +140,21 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project         ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status          ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_end_date        ON tasks(end_date);
 CREATE INDEX IF NOT EXISTS idx_members_project       ON project_members(project_id);
+
+-- ===== 予実管理 =====
+CREATE TABLE IF NOT EXISTS budgets (
+    id         SERIAL PRIMARY KEY,
+    account_id INTEGER      REFERENCES accounts(id) ON DELETE CASCADE,
+    year       INTEGER      NOT NULL,
+    month      INTEGER      NOT NULL CHECK (month BETWEEN 1 AND 12),
+    category   VARCHAR(50)  NOT NULL,
+    budget_amt NUMERIC(15,2) NOT NULL DEFAULT 0,
+    actual_amt NUMERIC(15,2) NOT NULL DEFAULT 0,
+    note       TEXT,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (account_id, year, month, category)
+);
+
+CREATE INDEX IF NOT EXISTS idx_budgets_account ON budgets(account_id);
+CREATE INDEX IF NOT EXISTS idx_budgets_period  ON budgets(year, month);
