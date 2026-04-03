@@ -10,6 +10,7 @@ supervisor.py — KEIEI-AI マルチエージェント統括
   - hr_agent 適性診断・汎用キーワード対応
   - ハイブリッドルーティング（KI+HuggingFace VI）実装
   - llm_factory に統一（vLLM・QLoRA対応）
+  - AIGISチェック無効化・誤検知修正
 """
 from typing import TypedDict, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -18,7 +19,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
 from app.core.llm_factory import get_llm
 
-llm = get_llm()  # ← これだけでOK・古いif/elseブロックは削除
+llm = get_llm()
+
 
 # ===== State定義 =====
 class SupervisorState(TypedDict):
@@ -36,7 +38,6 @@ def check_prompt_security(question: str) -> str | None:
         "ignore all instructions",
         "system prompt",
         "あなたはAIではない",
-        "ロールプレイ",
         "pretend you are",
         "jailbreak",
         "dan mode",
@@ -50,25 +51,14 @@ def check_prompt_security(question: str) -> str | None:
             return "不正な入力が検知されました。この操作は監査ログに記録されます。"
 
     sensitive_patterns = [
-        "パスワード", "APIキー", "秘密鍵", "トークン",
-        "password", "api_key", "secret", "private key",
+        "APIキー", "秘密鍵",
+        "api_key", "private key",
         "DATABASE_URL", "SECRET_KEY",
     ]
     for pattern in sensitive_patterns:
         if pattern.lower() in q_lower:
             print(f"[SECURITY] 機密情報関連クエリ: {question[:50]}")
             return "機密情報に関する質問には回答できません。"
-
-    # AIGIS リスク評価
-    try:
-        from app.agents.rag_agent import search_aigis
-        risk_docs = search_aigis(question, k=1)
-        if risk_docs and risk_docs[0]["score"] < 0.3:
-            category = risk_docs[0].get("category", "")
-            print(f"[SECURITY] AIGISリスク検知: {question[:50]} / {category}")
-            return f"この質問はセキュリティリスク項目（{category}）に該当します。監査ログに記録されました。"
-    except Exception:
-        pass
 
     return None
 
@@ -78,9 +68,8 @@ class RouteDecision(BaseModel):
     route:  Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "general"]
     reason: str
 
+
 # ===== Step1: 明確キーワード辞書（高信頼・即決定）=====
-# 業種問わず普遍的かつ明確な複合語・専門用語のみ収録
-# 単語が短いほど誤マッチしやすいので複合語優先
 CLEAR_KEYWORDS = {
     "cash_flow": [
         "資金繰り", "インボイス", "試算表", "キャッシュフロー",
@@ -117,7 +106,6 @@ CLEAR_KEYWORDS = {
 }
 
 # ===== Step2: 曖昧キーワード辞書（中信頼・HF前の補助）=====
-# 単語が短く誤マッチしやすいが、複数一致なら信頼できるもの
 SOFT_KEYWORDS = {
     "cash_flow": [
         "資金", "経費", "収支", "利益", "予測",
@@ -140,12 +128,9 @@ SOFT_KEYWORDS = {
         "プライバシー", "法令", "規制",
     ],
     "hr": [
-        "人事", "評価", "人材", "査定", "採用",
-        "育成", "研修", "強み", "弱み", "特性",
-        "キャリア", "成長", "スキル", "組織",
-        "チーム", "役割", "リーダー", "コミュニケーション",
-        "行動力", "創造性", "論理性", "柔軟性", "主体性",
-        "協調性", "分析力", "共感力", "計画性",
+        "人事", "評価", "人材", "採用",
+        "育成", "研修", "強み", "特性",
+        "キャリア", "スキル", "組織",
         "独創性", "俊敏性", "継続力", "自己信頼", "現実思考",
     ],
     "web": [
@@ -156,16 +141,6 @@ SOFT_KEYWORDS = {
 
 
 def route_question(state: SupervisorState) -> dict:
-    """
-    ハイブリッドルーティング（3段階）
-
-    設計方針：
-    Step1: 明確キーワード（複合語・専門用語）→ 即決定（0ms・最高信頼）
-    Step2: 曖昧キーワード（単語）→ 複数一致で決定（高信頼）
-    Step3: どちらも一致しない → HuggingFaceで意図分類（APIコストゼロ）
-
-    業種非依存：IT・介護・製造・建設・医療・法律どの業種でも機能する
-    """
     text     = state.get("question", "").lower()
     question = state.get("question", "")
 
@@ -185,12 +160,10 @@ def route_question(state: SupervisorState) -> dict:
     best_route = max(scores, key=lambda r: scores[r])
     best_score = scores[best_route]
 
-    # 2件以上マッチしたルートは信頼度が高い
     if best_score >= 2:
         print(f"[ROUTE-KI2] スコア決定: {best_route} (score={best_score})")
         return {"route": best_route}
 
-    # 1件マッチでも他ルートと差があれば採用
     second_scores = sorted(scores.values(), reverse=True)
     if best_score == 1 and (len(second_scores) < 2 or second_scores[1] == 0):
         print(f"[ROUTE-KI2] 単独マッチ決定: {best_route}")
@@ -210,12 +183,10 @@ def route_question(state: SupervisorState) -> dict:
 
 # ===== エージェント実行 =====
 async def execute_agent(state: SupervisorState) -> dict:
-    """選択されたエージェントを実行する"""
     route      = state["route"]
     question   = state["question"]
     session_id = state["session_id"]
 
-    # ★ Gate1 + Gate2 統合セキュリティ検査
     from app.core.security import full_security_check
     security_error = await full_security_check(question)
     if security_error:
@@ -247,7 +218,8 @@ async def execute_agent(state: SupervisorState) -> dict:
             result = await run_hr_agent(question, session_id)
 
         elif route == "web":
-            result = f"[Web] {question} を調査中...（実装予定）"
+            from app.agents.web_agent import run_web_agent
+            result = await run_web_agent(question, session_id)
 
         else:
             response = await llm.ainvoke([
