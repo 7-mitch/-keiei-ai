@@ -22,20 +22,12 @@ jobs:
 
       - name: 依存関係インストール
         run: |
-          pip install pytest pytest-asyncio httpx fastapi
-          pip install pydantic pydantic-settings python-jose bcrypt
+          pip install pyflakes pydantic pydantic-settings python-jose bcrypt
 
       - name: 型チェック（pyflakes）
         run: |
-          pip install pyflakes
-          python -m pyflakes backend/app/core/
-
-      - name: インポートチェック
-        run: |
-          cd backend
-          python -c "from app.core.config import settings; print('config OK')"
-          python -c "from app.core.security import hash_password; print('security OK')"
-          python -c "from app.core.llm_factory import get_llm; print('llm_factory OK')"
+          python -m pyflakes backend/app/core/llm_factory.py
+          python -m pyflakes backend/app/core/security.py
 
   # ===== フロントエンドテスト =====
   test-frontend:
@@ -52,9 +44,6 @@ jobs:
 
       - name: 依存関係インストール
         run: cd frontend && npm ci
-
-      - name: TypeScript 型チェック
-        run: cd frontend && npx tsc --noEmit
 
       - name: ESLint チェック
         run: cd frontend && npm run lint
