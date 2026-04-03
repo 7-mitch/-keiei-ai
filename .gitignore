@@ -49,7 +49,9 @@ terraform.tfstate
 # GCP認証情報（絶対にpushしない）
 credentials/
 *-key.json
-*service-account*.json__pycache__/
+*service-account*.json
+
+__pycache__/
 *.pyc
 vector_store/
 backend/docs_ingest/*.docx
