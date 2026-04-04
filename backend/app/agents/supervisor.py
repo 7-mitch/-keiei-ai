@@ -217,12 +217,26 @@ def route_question(state: SupervisorState) -> dict:
         print(f"[ROUTE-HF] エラー: {e} → general")
         return {"route": "general"}
 
-
 # ===== エージェント実行 =====
 async def execute_agent(state: SupervisorState) -> dict:
     route      = state["route"]
     question   = state["question"]
     session_id = state["session_id"]
+    thinking   = state.get("thinking", False)
+    mode       = state.get("mode", "standard")
+
+    # モードに応じてLLMを切り替え
+    from app.core.llm_factory import (
+        get_llm, get_llm_analysis, get_llm_deep, get_llm_expert
+    )
+    if mode == "expert":
+        current_llm = get_llm_expert()
+    elif mode == "reasoning" or thinking:
+        current_llm = get_llm_deep()
+    elif mode == "analysis":
+        current_llm = get_llm_analysis()
+    else:
+        current_llm = get_llm()
 
     from app.core.security import full_security_check
     security_error = await full_security_check(question)
@@ -231,7 +245,7 @@ async def execute_agent(state: SupervisorState) -> dict:
 
     try:
         if route == "file_analysis":
-            response = await llm.ainvoke([
+            response = await current_llm.ainvoke([
                 SystemMessage(content="""あなたは経営支援AIアシスタントです。
 アップロードされたファイルの内容を丁寧に分析し、日本語で回答してください。
 数値データがあれば集計・要約・ビジネスインサイトを提供してください。
@@ -272,7 +286,7 @@ async def execute_agent(state: SupervisorState) -> dict:
             result = await run_web_agent(question, session_id)
 
         else:
-            response = await llm.ainvoke([
+            response = await current_llm.ainvoke([
                 SystemMessage(content="""あなたはKEIEI-AIという経営支援AIアシスタントです。
 親しみやすく自然な日本語で会話してください。
 
@@ -302,7 +316,6 @@ async def execute_agent(state: SupervisorState) -> dict:
         traceback.print_exc()
         print(f"[ERROR] agent error: {e}")
         return {"result": "エラーが発生しました。もう一度お試しください。"}
-
 
 # ===== グラフ構築 =====
 def build_supervisor():

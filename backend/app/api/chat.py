@@ -20,6 +20,7 @@ class ChatResponse(BaseModel):
     route:        str
     session_id:   str
     graph_base64: str | None = None
+    graph_json:   str | None = None
 
 
 # ===== テキストチャット =====
@@ -188,15 +189,19 @@ async def chat_upload(
 
         # ===== グラフ生成 =====
         graph_base64 = None
+        graph_json   = None
         if df_for_graph is not None:
-            from app.agents.graph_agent import generate_graph
-            graph_base64 = generate_graph(df_for_graph, filename)
+            from app.agents.graph_agent import generate_graph, generate_graph_json
+            graph_json = generate_graph_json(df_for_graph, filename)
+            if graph_json is None:
+                graph_base64 = generate_graph(df_for_graph, filename)
 
         return ChatResponse(
             answer       = res_dict.get("result", "回答を取得できませんでした。"),
             route        = res_dict.get("route", "general"),
             session_id   = session_id,
             graph_base64 = graph_base64,
+            graph_json   = graph_json,
         )
 
     except Exception as e:
