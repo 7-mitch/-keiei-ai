@@ -11,8 +11,11 @@ router = APIRouter()
 
 
 class ChatRequest(BaseModel):
-    question: str
-    thinking: bool = False
+    question:    str
+    thinking:    bool  = False
+    mode:        str   = "standard"   # ← 追加
+    temperature: float = 0.7          # ← 追加
+    top_p:       float = 0.9          # ← 追加
 
 
 class ChatResponse(BaseModel):
@@ -36,11 +39,14 @@ async def chat(
 
         result = await supervisor.ainvoke(
             {
-                "question":   question,
-                "route":      "",
-                "result":     "",
-                "session_id": session_id,
-                "user_role":  user.get("role", "operator"),
+                "question":    question,
+                "route":       "",
+                "result":      "",
+                "session_id":  session_id,
+                "user_role":   user.get("role", "operator"),
+                "mode":        req.mode,        # ← 追加
+                "temperature": req.temperature, # ← 追加
+                "top_p":       req.top_p,       # ← 追加
             },
             config={"configurable": {"thread_id": session_id}},
         )
@@ -56,6 +62,7 @@ async def chat(
                 after_value   = {
                     "question": req.question,
                     "route":    res_dict.get("route", "general"),
+                    "mode":     req.mode,        # ← 追加（監査ログにも記録）
                 },
                 session_id = session_id,
                 ip_address = request.client.host if request.client else None,
@@ -77,11 +84,14 @@ async def chat(
 # ===== ファイルアップロード =====
 @router.post("/upload", response_model=ChatResponse)
 async def chat_upload(
-    request:  Request,
-    file:     UploadFile = File(...),
-    question: str        = Form("このファイルを分析してください"),
-    thinking: bool       = Form(False),
-    user:     dict       = Depends(get_current_user),
+    request:     Request,
+    file:        UploadFile = File(...),
+    question:    str        = Form("このファイルを分析してください"),
+    thinking:    bool       = Form(False),
+    mode:        str        = Form("standard"),  # ← 追加
+    temperature: float      = Form(0.7),         # ← 追加
+    top_p:       float      = Form(0.9),         # ← 追加
+    user:        dict       = Depends(get_current_user),
 ):
     session_id   = str(uuid.uuid4())
     filename     = file.filename or ""
@@ -164,7 +174,6 @@ async def chat_upload(
         else:
             text = f"未対応のファイル形式です（{ext}）"
 
-        # ===== AIに渡す質問を生成 =====
         combined_question = f"""以下のファイル（{filename}）の内容を分析してください。
 
 【質問】
@@ -177,17 +186,19 @@ async def chat_upload(
 
         result = await supervisor.ainvoke(
             {
-                "question":   final_question,
-                "route":      "file_analysis",
-                "result":     "",
-                "session_id": session_id,
-                "user_role":  user.get("role", "operator"),
+                "question":    final_question,
+                "route":       "file_analysis",
+                "result":      "",
+                "session_id":  session_id,
+                "user_role":   user.get("role", "operator"),
+                "mode":        mode,        # ← 追加
+                "temperature": temperature, # ← 追加
+                "top_p":       top_p,       # ← 追加
             },
             config={"configurable": {"thread_id": session_id}},
         )
         res_dict = dict(result) if result else {}
 
-        # ===== グラフ生成 =====
         graph_base64 = None
         graph_json   = None
         if df_for_graph is not None:
