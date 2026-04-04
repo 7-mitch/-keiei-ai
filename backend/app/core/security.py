@@ -78,6 +78,8 @@ SAFE_PATTERNS = [
     "分析", "レポート", "データ", "集計",
     "教えて", "どうすれば", "について", "とは",
     "help", "ヘルプ", "使い方",
+    "モード", "変更点", "機能", "違い", 
+    "推論", "通常", "設定", "確認", 
 ]
 
 
@@ -92,7 +94,7 @@ async def check_prompt_injection_llm(question: str) -> dict:
         return {"safe": True}
 
     # 短い入力（20文字以下）はスキップ
-    if len(question.strip()) <= 20:
+    if len(question.strip()) <= 30:
         return {"safe": True}
 
     try:
