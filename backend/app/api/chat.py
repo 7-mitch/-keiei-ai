@@ -16,9 +16,10 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    answer:     str
-    route:      str
-    session_id: str
+    answer:       str
+    route:        str
+    session_id:   str
+    graph_base64: str | None = None
 
 
 # ===== テキストチャット =====
@@ -30,7 +31,6 @@ async def chat(
 ):
     session_id = str(uuid.uuid4())
     try:
-        # thinking モードの切り替え
         question = req.question if req.thinking else f"/no_think {req.question}"
 
         result = await supervisor.ainvoke(
@@ -60,7 +60,7 @@ async def chat(
                 ip_address = request.client.host if request.client else None,
             )
         except Exception:
-            print(" 監査ログの保存に失敗しましたが、回答表示を優先します")
+            print("監査ログの保存に失敗しましたが、回答表示を優先します")
 
         return ChatResponse(
             answer     = res_dict.get("result", "回答を取得できませんでした。"),
@@ -82,9 +82,10 @@ async def chat_upload(
     thinking: bool       = Form(False),
     user:     dict       = Depends(get_current_user),
 ):
-    session_id = str(uuid.uuid4())
-    filename   = file.filename or ""
-    ext        = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    session_id   = str(uuid.uuid4())
+    filename     = file.filename or ""
+    ext          = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    df_for_graph = None
 
     try:
         contents = await file.read()
@@ -103,8 +104,9 @@ async def chat_upload(
         elif ext in ("xlsx", "xls"):
             try:
                 import pandas as pd
-                df   = pd.read_excel(io.BytesIO(contents))
-                text = df.to_string(index=False, max_rows=100)
+                df           = pd.read_excel(io.BytesIO(contents))
+                df_for_graph = df
+                text         = df.to_string(index=False, max_rows=100)
             except Exception as e:
                 text = f"Excelの読み込みに失敗しました: {e}"
 
@@ -112,8 +114,16 @@ async def chat_upload(
         elif ext == "csv":
             try:
                 import pandas as pd
-                df   = pd.read_csv(io.BytesIO(contents), encoding="utf-8-sig")
-                text = df.to_string(index=False, max_rows=100)
+                for enc in ("utf-8-sig", "shift_jis", "cp932", "utf-8"):
+                    try:
+                        df           = pd.read_csv(io.BytesIO(contents), encoding=enc)
+                        df_for_graph = df
+                        text         = df.to_string(index=False, max_rows=100)
+                        break
+                    except Exception:
+                        continue
+                else:
+                    text = "CSVの読み込みに失敗しました（エンコーディング不明）"
             except Exception as e:
                 text = f"CSVの読み込みに失敗しました: {e}"
 
@@ -162,7 +172,6 @@ async def chat_upload(
 【ファイル内容】
 {text[:3000]}
 """
-        # thinking モードの切り替え
         final_question = combined_question if thinking else f"/no_think {combined_question}"
 
         result = await supervisor.ainvoke(
@@ -177,10 +186,17 @@ async def chat_upload(
         )
         res_dict = dict(result) if result else {}
 
+        # ===== グラフ生成 =====
+        graph_base64 = None
+        if df_for_graph is not None:
+            from app.agents.graph_agent import generate_graph
+            graph_base64 = generate_graph(df_for_graph, filename)
+
         return ChatResponse(
-            answer     = res_dict.get("result", "回答を取得できませんでした。"),
-            route      = res_dict.get("route", "general"),
-            session_id = session_id,
+            answer       = res_dict.get("result", "回答を取得できませんでした。"),
+            route        = res_dict.get("route", "general"),
+            session_id   = session_id,
+            graph_base64 = graph_base64,
         )
 
     except Exception as e:

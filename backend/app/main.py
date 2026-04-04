@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.connection import init_db, close_db
-from app.api import chat, alert, report, auth, fraud, web, rag, collect
+from app.api import chat, alert, report, auth, fraud, web, rag, collect, feedback
 from app.api import projects
 from app.api import admin
 from app.api import budget
@@ -60,6 +60,7 @@ app.include_router(collect.router,  prefix="/api/collect",  tags=["データ収�
 app.include_router(projects.router, prefix="/api/projects", tags=["工程管理"])
 app.include_router(admin.router,    prefix="/api/admin",    tags=["管理者設定"])
 app.include_router(budget.router,   prefix="/api/budget",   tags=["予実管理"])
+app.include_router(feedback.router, prefix="/api/feedback", tags=["フィードバック"])
 
 @app.get("/health", tags=["システム"])
 async def health():

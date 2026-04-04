@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # JWT認証
     secret_key:          str = "change-me-in-production"
     algorithm:           str = "HS256"
-    access_token_expire: int = 480
+    access_token_expire: int = 720
 
     # CORS
     allowed_origins: list[str] = [
