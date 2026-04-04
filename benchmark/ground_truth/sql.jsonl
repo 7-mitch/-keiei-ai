@@ -1,0 +1,5 @@
+{"question": "今月の取引件数は？", "expected_route": "sql", "must_contain": ["件", "合計"], "must_not_say": ["わかりません", "データなし"], "consultant_level": "データアナリスト", "min_score": 4}
+{"question": "売上トップ5の顧客は？", "expected_route": "sql", "must_contain": ["顧客", "金額"], "must_not_say": ["わかりません"], "consultant_level": "データアナリスト", "min_score": 4}
+{"question": "先月比の売上変化は？", "expected_route": "sql", "must_contain": ["前月", "増減", "%"], "must_not_say": ["わかりません"], "consultant_level": "データアナリスト", "min_score": 4}
+{"question": "不正フラグが立った取引数は？", "expected_route": "sql", "must_contain": ["件", "フラグ"], "must_not_say": ["わかりません"], "consultant_level": "データアナリスト", "min_score": 4}
+{"question": "ユーザー数の推移は？", "expected_route": "sql", "must_contain": ["ユーザー", "推移"], "must_not_say": ["わかりません"], "consultant_level": "データアナリスト", "min_score": 4}

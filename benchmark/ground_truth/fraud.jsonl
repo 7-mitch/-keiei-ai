@@ -1,0 +1,3 @@
+{"question": "不正アラートの状況は？", "expected_route": "fraud", "must_contain": ["アラート", "リスク", "件"], "must_not_say": ["わかりません"], "consultant_level": "CFE（公認不正検査士）", "min_score": 4}
+{"question": "高リスクな取引はありますか？", "expected_route": "fraud", "must_contain": ["リスクスコア", "取引", "確認"], "must_not_say": ["わかりません"], "consultant_level": "CFE（公認不正検査士）", "min_score": 4}
+{"question": "異常な入出金パターンは？", "expected_route": "fraud", "must_contain": ["パターン", "異常", "検知"], "must_not_say": ["わかりません"], "consultant_level": "CFE（公認不正検査士）", "min_score": 4}

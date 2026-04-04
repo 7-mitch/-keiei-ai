@@ -125,8 +125,7 @@ async def get_transaction_report(
                 t.is_flagged,
                 t.risk_score,
                 t.created_at,
-                u.name    AS user_name,
-                a.account_type
+                u.name    AS user_name
             FROM transactions t
             JOIN accounts a ON t.account_id = a.id
             JOIN users    u ON a.user_id    = u.id

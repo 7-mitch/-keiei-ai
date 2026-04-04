@@ -1,0 +1,3 @@
+{"question": "経営改善のアドバイスをください", "expected_route": "general", "must_analyze": ["現状分析", "改善提案", "優先順位"], "must_not_say": ["わかりません"], "consultant_level": "中小企業診断士", "min_score": 4}
+{"question": "競合他社に勝つには？", "expected_route": "web", "must_analyze": ["差別化", "強み活用", "具体的施策"], "must_not_say": ["わかりません"], "consultant_level": "経営コンサルタント", "min_score": 4}
+{"question": "社員のモチベーションを上げるには？", "expected_route": "hr", "must_analyze": ["評価制度", "育成計画", "環境整備"], "must_not_say": ["わかりません"], "consultant_level": "人事コンサルタント", "min_score": 4}

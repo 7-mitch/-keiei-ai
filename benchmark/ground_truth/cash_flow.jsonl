@@ -1,0 +1,5 @@
+{"question": "売上が前月比20%減少しました", "expected_route": "cash_flow", "must_analyze": ["原因分析", "資金繰りへの影響", "改善アクション"], "must_not_say": ["データが不足", "専門家に相談"], "consultant_level": "中小企業診断士", "min_score": 4}
+{"question": "資金繰りが悪化しています", "expected_route": "cash_flow", "must_analyze": ["売掛金回収", "買掛金支払", "銀行融資"], "must_not_say": ["わかりません"], "consultant_level": "中小企業診断士", "min_score": 4}
+{"question": "来月の資金不足が心配です", "expected_route": "cash_flow", "must_analyze": ["キャッシュフロー予測", "入金サイト短縮", "経費削減"], "must_not_say": ["わかりません"], "consultant_level": "中小企業診断士", "min_score": 4}
+{"question": "売掛金の回収が遅れています", "expected_route": "cash_flow", "must_analyze": ["回収サイト", "督促方法", "ファクタリング"], "must_not_say": ["わかりません"], "consultant_level": "中小企業診断士", "min_score": 4}
+{"question": "設備投資を検討しています", "expected_route": "cash_flow", "must_analyze": ["投資回収期間", "借入条件", "補助金活用"], "must_not_say": ["わかりません"], "consultant_level": "中小企業診断士", "min_score": 4}
