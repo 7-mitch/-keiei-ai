@@ -12,6 +12,8 @@ supervisor.py — KEIEI-AI マルチエージェント統括
   - llm_factory に統一（vLLM・QLoRA対応）
   - AIGISチェック無効化・誤検知修正
   - file_analysis ルート追加（ファイルアップロード対応）
+  - 挨拶・雑談を自然な会話で返答するよう修正
+  - 補助金・助成金キーワード追加
 """
 from typing import TypedDict, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -66,9 +68,20 @@ def check_prompt_security(question: str) -> str | None:
 
 # ===== ルーティング判断 =====
 class RouteDecision(BaseModel):
-    route:  Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "file_analysis", "general"]
+    route: Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "file_analysis", "general"]
     reason: str
 
+
+# ===== 挨拶・雑談パターン（最優先で検出）=====
+GREETING_PATTERNS = [
+    "こんにちは", "こんばんは", "おはよう", "おはようございます",
+    "はじめまして", "よろしく", "よろしくお願い",
+    "ありがとう", "ありがとうございます", "助かりました",
+    "お疲れ", "お疲れ様", "お世話になります",
+    "調子は", "元気", "久しぶり",
+    "何ができる", "何ができますか", "使い方",
+    "help", "ヘルプ",
+]
 
 # ===== Step1: 明確キーワード辞書（高信頼・即決定）=====
 CLEAR_KEYWORDS = {
@@ -103,6 +116,9 @@ CLEAR_KEYWORDS = {
     "web": [
         "業界動向", "競合分析", "市場調査",
         "競合他社", "業界ニュース", "市場トレンド",
+        "補助金", "助成金", "給付金",
+        "ものづくり補助金", "it導入補助金", "デジタル化補助金",
+        "事業再構築補助金", "省力化補助金",
     ],
 }
 
@@ -136,19 +152,34 @@ SOFT_KEYWORDS = {
     ],
     "web": [
         "ニュース", "市場", "競合", "最新",
-        "トレンド", "他社",
+        "トレンド", "他社", "申請", "採択",
     ],
 }
 
 
 def route_question(state: SupervisorState) -> dict:
-    # ===== ファイル解析は強制ルート（キーワード判定をスキップ）=====
+    # ===== ファイル解析は強制ルート =====
     if state.get("route") == "file_analysis":
         print("[ROUTE] ファイル解析ルート（強制）")
         return {"route": "file_analysis"}
 
     text     = state.get("question", "").lower()
     question = state.get("question", "")
+
+    # ===== Step0: 挨拶・雑談は最優先でgeneralへ =====
+    if any(pattern in text for pattern in GREETING_PATTERNS):
+        print("[ROUTE] 挨拶・雑談 → general")
+        return {"route": "general"}
+
+    # 短い入力（10文字以下）もgeneralへ
+    if len(question.strip()) <= 10:
+        has_clear = any(
+            any(kw in text for kw in keywords)
+            for keywords in CLEAR_KEYWORDS.values()
+        )
+        if not has_clear:
+            print("[ROUTE] 短い入力 → general")
+            return {"route": "general"}
 
     # ===== Step1: 明確キーワードで即決定 =====
     for route, keywords in CLEAR_KEYWORDS.items():
@@ -242,7 +273,21 @@ async def execute_agent(state: SupervisorState) -> dict:
 
         else:
             response = await llm.ainvoke([
-                SystemMessage(content="あなたは経営支援AIアシスタントです。日本語で答えてください。"),
+                SystemMessage(content="""あなたはKEIEI-AIという経営支援AIアシスタントです。
+親しみやすく自然な日本語で会話してください。
+
+挨拶には挨拶で返し、雑談には普通に応答してください。
+経営に関する質問には専門的にサポートします。
+
+できること：
+- 財務・売上・KPIの分析
+- 資金繰り・キャッシュフローの管理
+- 不正取引の検知
+- 工程・プロジェクトの管理
+- 人事・適性診断のサポート
+- 社内規定・文書の検索
+- 市場・競合・補助金情報の収集
+- ファイル（Excel・CSV・PDF）の分析"""),
                 HumanMessage(content=question),
             ])
             if isinstance(response.content, list):
@@ -256,7 +301,7 @@ async def execute_agent(state: SupervisorState) -> dict:
         import traceback
         traceback.print_exc()
         print(f"[ERROR] agent error: {e}")
-        return {"result": f"error: {str(e)}"}
+        return {"result": "エラーが発生しました。もう一度お試しください。"}
 
 
 # ===== グラフ構築 =====

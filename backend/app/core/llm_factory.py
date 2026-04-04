@@ -10,6 +10,9 @@ qlora       → DPOファインチューニング済みモデル（vLLM経由）
 from functools import lru_cache
 from app.core.config import settings
 
+# ===== ローカルモデル設定（ここを変えるだけで切替）=====
+LOCAL_MODEL = "gemma3:4b"
+
 
 @lru_cache(maxsize=1)
 def get_llm(max_tokens: int = 2048):
@@ -46,9 +49,9 @@ def get_llm(max_tokens: int = 2048):
 
     else:
         from langchain_ollama import ChatOllama
-        print("[LLM] Ollama Qwen3（ローカルモード）")
+        print(f"[LLM] Ollama {LOCAL_MODEL}（ローカルモード）")
         return ChatOllama(
-            model    = "qwen3:8b",
+            model    = LOCAL_MODEL,
             base_url = "http://ollama:11434",
         )
 
@@ -77,6 +80,6 @@ def get_llm_light():
     else:
         from langchain_ollama import ChatOllama
         return ChatOllama(
-            model    = "qwen3:8b",
+            model    = LOCAL_MODEL,
             base_url = "http://ollama:11434",
         )

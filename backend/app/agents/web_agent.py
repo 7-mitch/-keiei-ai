@@ -7,6 +7,7 @@ web_agent.py — Web収集エージェント（業界別法令・ニュース自
   - LLM要約生成
   - RAGへの自動追加
   - 定期実行対応
+  - Tavily API連携（優先検索）
 """
 import asyncio
 import json
@@ -436,7 +437,49 @@ async def daily_collection() -> dict:
 async def run_web_agent(question: str, session_id: str) -> str:
     q = question.lower()
 
-    # URL指定収集
+    # ===== Tavily APIで検索（優先）=====
+    tavily_key = os.getenv("TAVILY_API_KEY", "")
+    if tavily_key:
+        try:
+            from tavily import TavilyClient
+            client  = TavilyClient(api_key=tavily_key)
+            results = client.search(
+                query           = question,
+                search_depth    = "basic",
+                max_results     = 5,
+                include_answer  = True,
+                include_domains = [
+                    "meti.go.jp", "chusho.meti.go.jp",
+                    "mirasapo-plus.go.jp", "nikkei.com",
+                    "boj.or.jp", "fsa.go.jp",
+                    "mhlw.go.jp", "nta.go.jp",
+                ],
+            )
+
+            if results.get("answer"):
+                answer   = results["answer"]
+                sources  = results.get("results", [])
+                src_text = "\n".join([
+                    f"- {r.get('title', '')}（{r.get('url', '')}）"
+                    for r in sources[:3]
+                ])
+                return f"{answer}\n\n【参考情報】\n{src_text}"
+
+            articles = [
+                {
+                    "title":  r.get("title", ""),
+                    "source": r.get("url", ""),
+                }
+                for r in results.get("results", [])
+            ]
+            if articles:
+                summary = await summarize_with_llm(articles, context="経営者向け")
+                return f"【Web検索結果】\n{summary}"
+
+        except Exception as e:
+            print(f"[WEB] Tavily検索エラー: {e}")
+
+    # ===== URL指定収集 =====
     if "http" in q:
         urls = re.findall(r'https?://[^\s]+', question)
         if urls:
@@ -448,13 +491,13 @@ async def run_web_agent(question: str, session_id: str) -> str:
                 )
             return f"【{result['title']}】\n{result['content'][:500]}..."
 
-    # SNSインサイト収集
+    # ===== SNSインサイト収集 =====
     if any(kw in q for kw in ["sns", "insight", "インサイト", "トレンド", "reddit", "zenn", "qiita"]):
         articles = await collect_sns_insights()
         summary  = await summarize_with_llm(articles, context="AIエンジニア向け")
         return f"【AIトレンドインサイト】\n{summary}"
 
-    # 業界別法令収集
+    # ===== 業界別法令収集 =====
     from app.agents.rag_agent import INDUSTRY_KEYWORDS
     for industry, keywords in INDUSTRY_KEYWORDS.items():
         if any(kw in q for kw in keywords):
@@ -466,7 +509,7 @@ async def run_web_agent(question: str, session_id: str) -> str:
             )
             return f"【{industry}業界 最新法令・規制情報】\n{summary}"
 
-    # 通常の金融ニュース収集
+    # ===== 通常の金融ニュース収集 =====
     articles = await collect_news()
     if not articles:
         return "現在ニュースを収集できませんでした。"
