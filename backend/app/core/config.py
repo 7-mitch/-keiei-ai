@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     # AI APIキー
     anthropic_api_key: str
     openai_api_key:    str = ""
+    gemini_api_key:    str = ""
+    huggingface_api_key: str = ""
     tavily_api_key:    str = ""
 
     # LangSmith

@@ -17,6 +17,7 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.core.llm_factory import get_llm
+from app.agents.base_prompt import get_agent_prompt
 from app.db.connection import get_conn
 
 # ===== LLM =====
@@ -323,9 +324,7 @@ async def summarize_with_llm(
 
     try:
         response = await llm.ainvoke([
-            SystemMessage(content=f"""あなたは{context}向けの情報要約AIです。
-収集した記事タイトルから重要なポイントを3〜5点にまとめてください。
-経営判断に役立つ視点で、簡潔に日本語でまとめてください。"""),
+            SystemMessage(content=get_agent_prompt("web", extra=f"【対象業界】{context}向けの情報を要約してください。")),
             HumanMessage(content=f"以下の記事を要約してください:\n\n{articles_text}"),
         ])
 
@@ -530,3 +529,5 @@ if __name__ == "__main__":
         print(result)
 
     asyncio.run(main())
+
+

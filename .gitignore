@@ -72,3 +72,21 @@ train_fraud_model.py
 # モデルファイル（大きいバイナリ）
 app/agents/fraud_model.pkl
 app/agents/fraud_scaler.pkl
+# 研究・DPOデータ（機密）
+research_notes.md
+dpo_export.jsonl
+*.jsonl
+
+# 量子・AIモデル
+quality_rl_state.pkl
+*.qasm
+*.q
+
+# APIキーバックアップ
+*.bak
+replacements.txt
+
+# ベンチマーク結果
+benchmark/results/
+*.benchmark
+

@@ -46,8 +46,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - DATABASE_URL=postgresql://keiei:keiei_pass@db:5432/keiei_ai
-      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://keiei:keiei_pass@db:5432/keiei_ai?sslmode=disable
+      - ENVIRONMENT=production
     volumes:
       - ./backend/docs_data:/app/docs_data
       - ./backend/vector_store:/app/vector_store

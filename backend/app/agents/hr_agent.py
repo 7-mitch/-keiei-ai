@@ -12,6 +12,7 @@ from typing import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from app.core.llm_factory import get_llm
+from app.agents.base_prompt import get_agent_prompt
 from app.db.connection import get_conn
 from app.db.audit import record_audit
 
@@ -86,20 +87,7 @@ def format_aptitude_profile(scores: dict) -> str:
 async def generate_evaluation_comment(question: str, aptitude: dict | None) -> str:
     aptitude_text = format_aptitude_profile(aptitude) if aptitude else ""
 
-    system_prompt = f"""あなたは人事評価の専門家AIです。
-以下のルールに従って評価コメントを生成してください。
-
-【ルール】
-- 具体的な行動・成果に基づいたコメントを生成する
-- ポジティブな表現を優先しつつ、改善点は建設的に伝える
-- 100〜200文字程度で簡潔にまとめる
-- 3つのセクションで出力する：
-  1. 【成果・強み】
-  2. 【改善点】
-  3. 【来期への期待】
-
-{f"【本人の適性プロファイル】{chr(10)}{aptitude_text}" if aptitude_text else ""}
-"""
+    system_prompt = get_agent_prompt("hr")
     response = await llm.ainvoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=question),
@@ -237,3 +225,4 @@ async def run_hr_agent(question: str, session_id: str) -> str:
     except Exception as e:
         print(f"[HR] エラー: {e}")
         return f"人事エージェントでエラーが発生しました: {str(e)}"
+

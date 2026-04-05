@@ -4,239 +4,118 @@ ENVIRONMENT変数で自動切り替え
 
 development → Ollama（ローカル・無料）
 production  → Claude API（クラウド）
+openai      → OpenAI API
+gemini      → Google Gemini API
 vllm        → vLLM（オンプレ高速・GPU）
 qlora       → DPOファインチューニング済みモデル（vLLM経由）
-
-モード別モデル・パラメータ：
-  標準モード     → gemma3:4b  temperature=0.7
-  詳細分析モード → gemma3:4b  temperature=0.3
-  推論モード     → qwen3:8b   temperature=0.1
-  専門家モード   → qwen3:8b   temperature=0.0
 """
 from functools import lru_cache
 from app.core.config import settings
 
-# ===== ローカルモデル設定 =====
-LOCAL_MODEL_FAST = "gemma3:4b"  # 標準・詳細分析（高速）
-LOCAL_MODEL_DEEP = "qwen3:8b"   # 推論・専門家（高精度）
+LOCAL_MODEL_FAST = "gemma3:4b"
+LOCAL_MODEL_DEEP = "qwen3:8b"
 
-# ===== パラメータ設定 =====
-# temperature: 高い→創造的・低い→正確
-# top_p:       高い→多様→低い→集中
-# repeat_penalty: 繰り返し抑制（1.0=無効・1.1=軽度抑制）
+CLAUDE_MODELS = {
+    "haiku":  "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "opus":   "claude-opus-4-6",
+}
+OPENAI_MODELS = {
+    "mini":  "gpt-4o-mini",
+    "gpt4o": "gpt-4o",
+    "o1":    "o1-preview",
+}
+GEMINI_MODELS = {
+    "flash": "gemini-2.0-flash",
+    "pro":   "gemini-1.5-pro",
+    "ultra": "gemini-1.5-ultra",
+}
 
 PARAMS = {
-    "standard": {          # 標準モード：自然な会話
-        "temperature":    0.7,
-        "top_p":          0.9,
-        "repeat_penalty": 1.1,
-    },
-    "analysis": {          # 詳細分析モード：バランス
-        "temperature":    0.3,
-        "top_p":          0.8,
-        "repeat_penalty": 1.1,
-    },
-    "reasoning": {         # 推論モード：高精度
-        "temperature":    0.1,
-        "top_p":          0.7,
-        "repeat_penalty": 1.05,
-    },
-    "expert": {            # 専門家モード：最高精度
-        "temperature":    0.0,
-        "top_p":          0.5,
-        "repeat_penalty": 1.0,
-    },
+    "standard":  {"temperature": 0.7, "top_p": 0.9,  "repeat_penalty": 1.1},
+    "analysis":  {"temperature": 0.3, "top_p": 0.8,  "repeat_penalty": 1.1},
+    "reasoning": {"temperature": 0.1, "top_p": 0.7,  "repeat_penalty": 1.05},
+    "expert":    {"temperature": 0.0, "top_p": 0.5,  "repeat_penalty": 1.0},
 }
+
+
+def _get_claude(model_key="sonnet", temperature=0.7, max_tokens=2048):
+    from langchain_anthropic import ChatAnthropic
+    model = CLAUDE_MODELS.get(model_key, CLAUDE_MODELS["sonnet"])
+    print(f"[LLM] Claude API ({model}) temp={temperature}")
+    return ChatAnthropic(model=model, max_tokens=max_tokens, temperature=temperature, api_key=settings.anthropic_api_key)
+
+
+def _get_openai(model_key="gpt4o", temperature=0.7, max_tokens=2048):
+    from langchain_openai import ChatOpenAI
+    model = OPENAI_MODELS.get(model_key, OPENAI_MODELS["gpt4o"])
+    print(f"[LLM] OpenAI ({model}) temp={temperature}")
+    return ChatOpenAI(model=model, max_tokens=max_tokens, temperature=temperature, api_key=settings.openai_api_key)
+
+
+def _get_gemini(model_key="pro", temperature=0.7, max_tokens=2048):
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    model = GEMINI_MODELS.get(model_key, GEMINI_MODELS["pro"])
+    print(f"[LLM] Gemini ({model}) temp={temperature}")
+    return ChatGoogleGenerativeAI(model=model, max_output_tokens=max_tokens, temperature=temperature, google_api_key=settings.gemini_api_key)
+
+
+def _get_ollama(model=None, temperature=0.7, top_p=0.9):
+    from langchain_ollama import ChatOllama
+    m = model or LOCAL_MODEL_FAST
+    print(f"[LLM] Ollama ({m}) temp={temperature}")
+    return ChatOllama(model=m, base_url="http://ollama:11434", temperature=temperature, top_p=top_p, repeat_penalty=1.1)
+
+
+def get_llm_dynamic(provider=None, model_key=None, temperature=None, top_p=None, max_tokens=2048):
+    """動的LLM取得（フロントエンドからのパラメータ対応）"""
+    env  = provider or settings.environment
+    temp = temperature if temperature is not None else PARAMS["standard"]["temperature"]
+    tp   = top_p      if top_p      is not None else PARAMS["standard"]["top_p"]
+
+    if env == "production":
+        return _get_claude(model_key or "sonnet", temp, max_tokens)
+    elif env == "openai":
+        return _get_openai(model_key or "gpt4o", temp, max_tokens)
+    elif env == "gemini":
+        return _get_gemini(model_key or "pro", temp, max_tokens)
+    elif env in ("vllm", "qlora"):
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(base_url=settings.vllm_base_url, api_key="dummy", model=settings.vllm_model, max_tokens=max_tokens, temperature=temp)
+    else:
+        return _get_ollama(LOCAL_MODEL_FAST, temp, tp)
 
 
 @lru_cache(maxsize=1)
 def get_llm(max_tokens: int = 2048):
-    """標準モード用LLM（gemma3:4b・temperature=0.7）"""
-    env = settings.environment
-
-    if env == "production":
-        from langchain_anthropic import ChatAnthropic
-        print("[LLM] Claude API（標準モード）")
-        return ChatAnthropic(
-            model       = "claude-sonnet-4-20250514",
-            max_tokens  = max_tokens,
-            temperature = PARAMS["standard"]["temperature"],
-            api_key     = settings.anthropic_api_key,
-        )
-
-    elif env == "vllm":
-        from langchain_openai import ChatOpenAI
-        print(f"[LLM] vLLM（{settings.vllm_model}）")
-        return ChatOpenAI(
-            base_url    = settings.vllm_base_url,
-            api_key     = "dummy",
-            model       = settings.vllm_model,
-            max_tokens  = max_tokens,
-            temperature = PARAMS["standard"]["temperature"],
-        )
-
-    elif env == "qlora":
-        from langchain_openai import ChatOpenAI
-        print(f"[LLM] QLoRA/DPOモデル（{settings.qlora_model}）")
-        return ChatOpenAI(
-            base_url    = settings.vllm_base_url,
-            api_key     = "dummy",
-            model       = settings.qlora_model,
-            max_tokens  = max_tokens,
-            temperature = PARAMS["standard"]["temperature"],
-        )
-
-    else:
-        from langchain_ollama import ChatOllama
-        p = PARAMS["standard"]
-        print(f"[LLM] Ollama {LOCAL_MODEL_FAST}（標準モード temp={p['temperature']}）")
-        return ChatOllama(
-            model          = LOCAL_MODEL_FAST,
-            base_url       = "http://ollama:11434",
-            temperature    = p["temperature"],
-            top_p          = p["top_p"],
-            repeat_penalty = p["repeat_penalty"],
-        )
+    return get_llm_dynamic(max_tokens=max_tokens)
 
 
 def get_llm_analysis(max_tokens: int = 2048):
-    """詳細分析モード用LLM（gemma3:4b・temperature=0.3）"""
-    env = settings.environment
-
-    if env == "production":
-        from langchain_anthropic import ChatAnthropic
-        print("[LLM] Claude API（詳細分析モード）")
-        return ChatAnthropic(
-            model       = "claude-sonnet-4-20250514",
-            max_tokens  = max_tokens,
-            temperature = PARAMS["analysis"]["temperature"],
-            api_key     = settings.anthropic_api_key,
-        )
-
-    elif env in ("vllm", "qlora"):
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            base_url    = settings.vllm_base_url,
-            api_key     = "dummy",
-            model       = settings.vllm_model,
-            max_tokens  = max_tokens,
-            temperature = PARAMS["analysis"]["temperature"],
-        )
-
-    else:
-        from langchain_ollama import ChatOllama
-        p = PARAMS["analysis"]
-        print(f"[LLM] Ollama {LOCAL_MODEL_FAST}（詳細分析モード temp={p['temperature']}）")
-        return ChatOllama(
-            model          = LOCAL_MODEL_FAST,
-            base_url       = "http://ollama:11434",
-            temperature    = p["temperature"],
-            top_p          = p["top_p"],
-            repeat_penalty = p["repeat_penalty"],
-        )
+    p = PARAMS["analysis"]
+    return get_llm_dynamic(temperature=p["temperature"], top_p=p["top_p"], max_tokens=max_tokens)
 
 
 def get_llm_deep(max_tokens: int = 4096):
-    """推論モード用LLM（qwen3:8b・temperature=0.1）"""
-    env = settings.environment
-
-    if env == "production":
-        from langchain_anthropic import ChatAnthropic
-        print("[LLM] Claude API（推論モード）")
-        return ChatAnthropic(
-            model       = "claude-sonnet-4-20250514",
-            max_tokens  = max_tokens,
-            temperature = PARAMS["reasoning"]["temperature"],
-            api_key     = settings.anthropic_api_key,
-        )
-
-    elif env in ("vllm", "qlora"):
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            base_url    = settings.vllm_base_url,
-            api_key     = "dummy",
-            model       = settings.vllm_model,
-            max_tokens  = max_tokens,
-            temperature = PARAMS["reasoning"]["temperature"],
-        )
-
-    else:
-        from langchain_ollama import ChatOllama
-        p = PARAMS["reasoning"]
-        print(f"[LLM] Ollama {LOCAL_MODEL_DEEP}（推論モード temp={p['temperature']}）")
-        return ChatOllama(
-            model          = LOCAL_MODEL_DEEP,
-            base_url       = "http://ollama:11434",
-            temperature    = p["temperature"],
-            top_p          = p["top_p"],
-            repeat_penalty = p["repeat_penalty"],
-        )
+    p = PARAMS["reasoning"]
+    return get_llm_dynamic(temperature=p["temperature"], top_p=p["top_p"], max_tokens=max_tokens)
 
 
 def get_llm_expert(max_tokens: int = 4096):
-    """専門家モード用LLM（qwen3:8b・temperature=0.0）"""
-    env = settings.environment
-
-    if env == "production":
-        from langchain_anthropic import ChatAnthropic
-        print("[LLM] Claude API（専門家モード）")
-        return ChatAnthropic(
-            model       = "claude-sonnet-4-20250514",
-            max_tokens  = max_tokens,
-            temperature = PARAMS["expert"]["temperature"],
-            api_key     = settings.anthropic_api_key,
-        )
-
-    elif env in ("vllm", "qlora"):
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            base_url    = settings.vllm_base_url,
-            api_key     = "dummy",
-            model       = settings.vllm_model,
-            max_tokens  = max_tokens,
-            temperature = PARAMS["expert"]["temperature"],
-        )
-
-    else:
-        from langchain_ollama import ChatOllama
-        p = PARAMS["expert"]
-        print(f"[LLM] Ollama {LOCAL_MODEL_DEEP}（専門家モード temp={p['temperature']}）")
-        return ChatOllama(
-            model          = LOCAL_MODEL_DEEP,
-            base_url       = "http://ollama:11434",
-            temperature    = p["temperature"],
-            top_p          = p["top_p"],
-            repeat_penalty = p["repeat_penalty"],
-        )
+    p = PARAMS["expert"]
+    return get_llm_dynamic(temperature=p["temperature"], top_p=p["top_p"], max_tokens=max_tokens)
 
 
 def get_llm_light():
-    """セキュリティ検査用軽量LLM（temperature=0固定）"""
     env = settings.environment
-
     if env == "production":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model       = "claude-haiku-4-5-20251001",
-            max_tokens  = 100,
-            temperature = 0,
-            api_key     = settings.anthropic_api_key,
-        )
-
+        return _get_claude("haiku", 0.0, 100)
+    elif env == "openai":
+        return _get_openai("mini", 0.0, 100)
+    elif env == "gemini":
+        return _get_gemini("flash", 0.0, 100)
     elif env in ("vllm", "qlora"):
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            base_url    = settings.vllm_base_url,
-            api_key     = "dummy",
-            model       = settings.vllm_model,
-            max_tokens  = 100,
-            temperature = 0,
-        )
-
+        return ChatOpenAI(base_url=settings.vllm_base_url, api_key="dummy", model=settings.vllm_model, max_tokens=100, temperature=0)
     else:
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model       = LOCAL_MODEL_FAST,
-            base_url    = "http://ollama:11434",
-            temperature = 0,
-        )
+        return _get_ollama(LOCAL_MODEL_FAST, 0.0, 1.0)

@@ -6,7 +6,7 @@ _pool: asyncpg.Pool | None = None
 
 async def init_db() -> None:
     global _pool
-    ssl = "require" if settings.environment == "production" else None
+    ssl = None
     _pool = await asyncpg.create_pool(
         dsn=settings.database_url,
         min_size=2,

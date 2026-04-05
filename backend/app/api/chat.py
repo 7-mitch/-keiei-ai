@@ -219,3 +219,4 @@ async def chat_upload(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"ファイル処理エラー: {str(e)}")
+

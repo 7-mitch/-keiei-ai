@@ -11,6 +11,7 @@ from typing import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from app.core.llm_factory import get_llm
+from app.agents.base_prompt import get_agent_prompt
 from app.db.connection import get_conn
 
 # ===== LLM =====
@@ -189,9 +190,7 @@ async def step5_report(state: CashFlowState) -> dict:
         for month, v in sorted(summary.items(), reverse=True)
     ]) or "データなし"
 
-    system_prompt = """あなたは中小企業の経営支援AIです。
-資金繰りデータをもとに、経営者が即座に行動できる簡潔なレポートを作成してください。
-専門用語を避け、200〜300文字で要点をまとめてください。"""
+    system_prompt = get_agent_prompt("cash_flow")
 
     user_message = f"""質問：{question}
 
@@ -264,3 +263,4 @@ async def run_cash_flow_agent(question: str, session_id: str) -> str:
         "report":          "",
     })
     return state["report"]
+

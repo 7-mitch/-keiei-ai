@@ -21,6 +21,7 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from pydantic import BaseModel
 from app.core.llm_factory import get_llm
+from app.agents.base_prompt import get_agent_prompt
 
 llm = get_llm()
 
@@ -32,6 +33,8 @@ class SupervisorState(TypedDict):
     result:     str
     session_id: str
     user_role:  str
+    provider:   str
+    model_key:  str
 
 
 # ===== セキュリティ検査 Gate1（キーワード） =====
@@ -81,6 +84,11 @@ GREETING_PATTERNS = [
     "調子は", "元気", "久しぶり",
     "何ができる", "何ができますか", "使い方",
     "help", "ヘルプ",
+    "あなたは", "あなたが", "クロード", "claude", "anthropic", "アンソロ",
+    "openai", "gemini", "gpt", "llm", "ai", "モデル", "language model",
+    "どんなai", "何のai", "どのai", "誰が作", "開発者", "誰ですか",
+    "機能", "できること", "使い方", "説明して", "教えて",
+    "バージョン", "version", "アップデート", "変更点", "違い",
 ]
 
 # ===== Step1: 明確キーワード辞書（高信頼・即決定）=====
@@ -227,9 +235,16 @@ async def execute_agent(state: SupervisorState) -> dict:
 
     # モードに応じてLLMを切り替え
     from app.core.llm_factory import (
-        get_llm, get_llm_analysis, get_llm_deep, get_llm_expert
+        get_llm, get_llm_analysis, get_llm_deep, get_llm_expert, get_llm_dynamic
     )
-    if mode == "expert":
+    provider  = state.get("provider",  None)
+    model_key = state.get("model_key", None)
+    temp      = state.get("temperature", None)
+    tp        = state.get("top_p",       None)
+
+    if provider:
+        current_llm = get_llm_dynamic(provider=provider, model_key=model_key, temperature=temp, top_p=tp)
+    elif mode == "expert":
         current_llm = get_llm_expert()
     elif mode == "reasoning" or thinking:
         current_llm = get_llm_deep()
@@ -246,10 +261,7 @@ async def execute_agent(state: SupervisorState) -> dict:
     try:
         if route == "file_analysis":
             response = await current_llm.ainvoke([
-                SystemMessage(content="""あなたは経営支援AIアシスタントです。
-アップロードされたファイルの内容を丁寧に分析し、日本語で回答してください。
-数値データがあれば集計・要約・ビジネスインサイトを提供してください。
-表形式のデータは読みやすく整理して提示してください。"""),
+                SystemMessage(content=get_agent_prompt("file_analysis")),
                 HumanMessage(content=question),
             ])
             if isinstance(response.content, list):
@@ -287,21 +299,7 @@ async def execute_agent(state: SupervisorState) -> dict:
 
         else:
             response = await current_llm.ainvoke([
-                SystemMessage(content="""あなたはKEIEI-AIという経営支援AIアシスタントです。
-親しみやすく自然な日本語で会話してください。
-
-挨拶には挨拶で返し、雑談には普通に応答してください。
-経営に関する質問には専門的にサポートします。
-
-できること：
-- 財務・売上・KPIの分析
-- 資金繰り・キャッシュフローの管理
-- 不正取引の検知
-- 工程・プロジェクトの管理
-- 人事・適性診断のサポート
-- 社内規定・文書の検索
-- 市場・競合・補助金情報の収集
-- ファイル（Excel・CSV・PDF）の分析"""),
+                SystemMessage(content=get_agent_prompt("general")),
                 HumanMessage(content=question),
             ])
             if isinstance(response.content, list):
@@ -328,3 +326,9 @@ def build_supervisor():
     return workflow.compile(checkpointer=MemorySaver())
 
 supervisor = build_supervisor()
+
+
+
+
+
+

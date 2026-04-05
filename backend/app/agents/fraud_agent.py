@@ -12,6 +12,7 @@ from typing import TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from app.core.llm_factory import get_llm
+from app.agents.base_prompt import get_agent_prompt
 from app.db.connection import get_conn
 from app.db.audit import record_audit
 
@@ -156,16 +157,10 @@ async def layer3_llm_judgment(state: FraudDetectionState) -> dict:
         rule_result    = state["rule_result"]
         pattern_result = state["pattern_result"]
 
-        system_prompt = """あなたは金融不正検知の専門家AIです。
-取引情報とルールベース・パターン認識の結果を踏まえ、不正リスクを判定してください。
-
-以下のJSON形式のみで回答してください：
-{
-  "is_fraud": true/false,
-  "risk_score": 0.0〜1.0,
-  "severity": "low"/"medium"/"high"/"critical",
-  "reasoning": "判定理由を100文字以内で"
-}"""
+        system_prompt = get_agent_prompt("fraud", extra="""
+【出力形式】必ず以下のJSON形式のみで回答してください：
+{"risk_score": 0.0-1.0, "is_fraud": true/false, "reason": "理由", "recommendation": "推奨アクション"}
+""")
 
         user_message = f"""取引情報：
 - 金額: {state['amount']:,}円
@@ -365,3 +360,4 @@ fraud_detector = build_fraud_detector()
 async def run_fraud_agent(question: str, session_id: str) -> str:
     """Supervisorから呼び出されるエントリポイント"""
     return f"[不正検知エージェント] 「{question}」を分析します。取引IDを指定してAPIから呼び出してください。"
+
