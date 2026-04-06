@@ -6,11 +6,11 @@
   ],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::504558652204:role/consul-ai-ecs-task-execution-role",
+  "executionRoleArn": "",
   "containerDefinitions": [
     {
       "name": "keiei-ai-backend",
-      "image": "504558652204.dkr.ecr.ap-northeast-1.amazonaws.com/keiei-ai-backend:latest",
+      "image": "",
       "portMappings": [
         {
           "containerPort": 8000,
