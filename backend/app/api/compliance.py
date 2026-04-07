@@ -16,7 +16,7 @@ from app.agents.compliance_agent import (
     certify_compliance_result,
 )
 
-router = APIRouter(prefix="/compliance", tags=["compliance"])
+router = APIRouter(tags=["compliance"])
 
 
 # =====================================================

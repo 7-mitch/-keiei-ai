@@ -64,7 +64,7 @@ def _get_ollama(model=None, temperature=0.7, top_p=0.9):
     from langchain_ollama import ChatOllama
     m = model or LOCAL_MODEL_FAST
     print(f"[LLM] Ollama ({m}) temp={temperature}")
-    return ChatOllama(model=m, base_url="http://ollama:11434", temperature=temperature, top_p=top_p, repeat_penalty=1.1)
+    return ChatOllama(model=m, base_url="http://localhost:11434", temperature=temperature, top_p=top_p, repeat_penalty=1.1)
 
 
 def get_llm_dynamic(provider=None, model_key=None, temperature=None, top_p=None, max_tokens=2048):
