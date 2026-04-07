@@ -54,8 +54,13 @@ class Settings(BaseSettings):
     # ENVIRONMENT=qlora の場合に vllm_model をこちらに切り替える
     qlora_model:    str = "your-hf-username/keiei-ai-qwen3-dpo"
 
+    benchmark_email:    str = ""
+    benchmark_password: str = ""
+    langchain_endpoint: str = ""
+
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 @lru_cache()
 def get_settings() -> Settings:

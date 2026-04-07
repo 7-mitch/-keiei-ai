@@ -14,6 +14,10 @@ supervisor.py — KEIEI-AI マルチエージェント統括
   - file_analysis ルート追加（ファイルアップロード対応）
   - 挨拶・雑談を自然な会話で返答するよう修正
   - 補助金・助成金キーワード追加
+  - graph_agent ルート追加（グラフ・可視化対応）
+  - compliance_agent 追加（守り：労務・ハラスメント・契約・情報漏洩）
+  - info_leak_guard 統合（全ルート出力スキャン）
+  - full_output_guard を return 直前に適用
 """
 from typing import TypedDict, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -28,13 +32,13 @@ llm = get_llm()
 
 # ===== State定義 =====
 class SupervisorState(TypedDict):
-    question:   str
-    route:      str
-    result:     str
-    session_id: str
-    user_role:  str
-    provider:   str
-    model_key:  str
+    question:    str
+    route:       str
+    result:      str
+    session_id:  str
+    user_role:   str
+    provider:    str
+    model_key:   str
 
 
 # ===== セキュリティ検査 Gate1（キーワード） =====
@@ -71,7 +75,11 @@ def check_prompt_security(question: str) -> str | None:
 
 # ===== ルーティング判断 =====
 class RouteDecision(BaseModel):
-    route: Literal["project", "sql", "rag", "fraud", "web", "cash_flow", "hr", "file_analysis", "general"]
+    route: Literal[
+        "project", "sql", "rag", "fraud", "web",
+        "cash_flow", "hr", "file_analysis", "graph",
+        "compliance", "general"
+    ]
     reason: str
 
 
@@ -121,12 +129,28 @@ CLEAR_KEYWORDS = {
         "学習パス", "キャリアパス", "能力開発計画",
         "1on1", "mbo", "人材育成",
     ],
+    "graph": [
+        "グラフ", "グラフ化", "可視化", "チャート",
+        "棒グラフ", "折れ線グラフ", "円グラフ", "散布図", "ヒストグラム",
+        "収益グラフ", "売上グラフ", "資産グラフ", "推移グラフ",
+        "グラフを作", "グラフで見", "グラフにして",
+    ],
     "web": [
         "業界動向", "競合分析", "市場調査",
         "競合他社", "業界ニュース", "市場トレンド",
         "補助金", "助成金", "給付金",
         "ものづくり補助金", "it導入補助金", "デジタル化補助金",
         "事業再構築補助金", "省力化補助金",
+    ],
+    "compliance": [
+        "残業代", "未払い", "サービス残業", "36協定", "労働時間",
+        "有給", "育休", "産休", "解雇", "不当解雇", "最低賃金",
+        "労基法", "労働基準法", "社会保険", "労災",
+        "パワハラ", "セクハラ", "マタハラ", "ハラスメント",
+        "いじめ", "嫌がらせ", "退職強要",
+        "就業規則", "雇用契約書", "NDA", "秘密保持契約",
+        "個人情報漏洩", "情報流出", "不正アクセス", "GDPR",
+        "個人情報保護法",
     ],
 }
 
@@ -158,9 +182,17 @@ SOFT_KEYWORDS = {
         "キャリア", "スキル", "組織",
         "独創性", "俊敏性", "継続力", "自己信頼", "現実思考",
     ],
+    "graph": [
+        "グラフ", "図", "チャート", "可視化", "見える化",
+    ],
     "web": [
         "ニュース", "市場", "競合", "最新",
         "トレンド", "他社", "申請", "採択",
+    ],
+    "compliance": [
+        "労務", "法令", "違反", "コンプライアンス",
+        "ハラスメント", "契約", "規程", "雇用",
+        "個人情報", "情報管理", "リスク", "審査",
     ],
 }
 
@@ -225,6 +257,7 @@ def route_question(state: SupervisorState) -> dict:
         print(f"[ROUTE-HF] エラー: {e} → general")
         return {"route": "general"}
 
+
 # ===== エージェント実行 =====
 async def execute_agent(state: SupervisorState) -> dict:
     route      = state["route"]
@@ -232,6 +265,7 @@ async def execute_agent(state: SupervisorState) -> dict:
     session_id = state["session_id"]
     thinking   = state.get("thinking", False)
     mode       = state.get("mode", "standard")
+    user_role  = state.get("user_role", "staff")  # 情報漏洩ガード用
 
     # モードに応じてLLMを切り替え
     from app.core.llm_factory import (
@@ -253,21 +287,24 @@ async def execute_agent(state: SupervisorState) -> dict:
     else:
         current_llm = get_llm()
 
+    # ===== Gate1+2: セキュリティ検査 =====
     from app.core.security import full_security_check
     security_error = await full_security_check(question)
     if security_error:
         return {"result": security_error}
 
     try:
+        # ===== エージェントルーティング =====
         if route == "file_analysis":
             response = await current_llm.ainvoke([
                 SystemMessage(content=get_agent_prompt("file_analysis")),
                 HumanMessage(content=question),
             ])
-            if isinstance(response.content, list):
-                result = response.content[0].get("text", "") if response.content else ""
-            else:
-                result = str(response.content)
+            result = (
+                response.content[0].get("text", "")
+                if isinstance(response.content, list)
+                else str(response.content)
+            )
 
         elif route == "cash_flow":
             from app.agents.cash_flow_agent import run_cash_flow_agent
@@ -293,6 +330,14 @@ async def execute_agent(state: SupervisorState) -> dict:
             from app.agents.hr_agent import run_hr_agent
             result = await run_hr_agent(question, session_id)
 
+        elif route == "graph":
+            from app.agents.graph_agent import run_graph_agent
+            result = await run_graph_agent(question, session_id)
+
+        elif route == "compliance":
+            from app.agents.compliance_agent import run_compliance_agent
+            result = await run_compliance_agent(question, session_id)
+
         elif route == "web":
             from app.agents.web_agent import run_web_agent
             result = await run_web_agent(question, session_id)
@@ -302,10 +347,15 @@ async def execute_agent(state: SupervisorState) -> dict:
                 SystemMessage(content=get_agent_prompt("general")),
                 HumanMessage(content=question),
             ])
-            if isinstance(response.content, list):
-                result = response.content[0].get("text", "") if response.content else ""
-            else:
-                result = str(response.content)
+            result = (
+                response.content[0].get("text", "")
+                if isinstance(response.content, list)
+                else str(response.content)
+            )
+
+        # ===== 情報漏洩ガード（全ルート共通・return直前）=====
+        from app.agents.info_leak_guard import full_output_guard
+        result = await full_output_guard(result, user_role)
 
         return {"result": result}
 
@@ -314,6 +364,7 @@ async def execute_agent(state: SupervisorState) -> dict:
         traceback.print_exc()
         print(f"[ERROR] agent error: {e}")
         return {"result": "エラーが発生しました。もう一度お試しください。"}
+
 
 # ===== グラフ構築 =====
 def build_supervisor():
@@ -326,9 +377,3 @@ def build_supervisor():
     return workflow.compile(checkpointer=MemorySaver())
 
 supervisor = build_supervisor()
-
-
-
-
-
-
