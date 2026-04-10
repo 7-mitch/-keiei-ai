@@ -94,3 +94,6 @@ benchmark/results/
 backend/docs_data/
 backend/app/**/__pycache__/
 app/**/__pycache__/
+
+KEIEI-AI_技術仕様書.md
+Technical_spec.md
