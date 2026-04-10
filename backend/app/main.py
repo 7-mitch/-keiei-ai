@@ -12,6 +12,7 @@ from app.api import dpo
 from app.api import admin
 from app.api import budget
 from app.api import compliance
+from app.api import cash_flow
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
@@ -40,12 +41,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "https://keiei-ai-frontend.vercel.app",
-        "https://*.vercel.app",
-    ],
+    allow_origins=settings.allowed_origins,
     allow_credentials = True,
     allow_methods     = ["*"],
     allow_headers     = ["*"],
@@ -64,6 +60,7 @@ app.include_router(admin.router,    prefix="/api/admin",    tags=["管理者設�
 app.include_router(budget.router,   prefix="/api/budget",   tags=["予実管理"])
 app.include_router(dpo.router,      prefix="/api/dpo",      tags=["DPOパイプライン"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["フィードバック"])
+app.include_router(cash_flow.router, prefix="/api/cash_flow", tags=["資金繰り"])
 app.include_router(compliance.router, prefix="/api/compliance", tags=["コンプライアンス"])
 
 @app.get("/health", tags=["システム"])
@@ -75,4 +72,3 @@ async def health():
     }
 
 # compliance registered
-
