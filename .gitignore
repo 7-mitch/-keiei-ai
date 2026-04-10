@@ -90,3 +90,7 @@ replacements.txt
 benchmark/results/
 *.benchmark
 
+
+backend/docs_data/
+backend/app/**/__pycache__/
+app/**/__pycache__/
