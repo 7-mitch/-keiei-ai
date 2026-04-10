@@ -6,7 +6,6 @@ import base64
 import pandas as pd
 import numpy as np
 
-
 def detect_graph_type(df: pd.DataFrame) -> str:
     """データの特性からグラフ種類を自動判定"""
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
@@ -245,4 +244,118 @@ def _generate_matplotlib_fallback(df: pd.DataFrame, filename: str) -> str | None
 
     except Exception as e:
         print(f"[GRAPH] matplotlibフォールバックエラー: {e}")
+        return None
+
+def generate_graph_json(df: pd.DataFrame, filename: str) -> str | None:
+    """PlotlyグラフをJSON形式で返す（フロントエンドでインタラクティブ表示用）"""
+    try:
+        import plotly.graph_objects as go
+        import plotly.express as px
+        from plotly.subplots import make_subplots
+        import plotly.io as pio
+
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        if not numeric_cols:
+            return None
+
+        label_col  = df.columns[0]
+        graph_type = detect_graph_type(df)
+        col_count  = min(len(numeric_cols), 3)
+        colors     = ["#3B82F6", "#10B981", "#F59E0B"]
+
+        if graph_type == "timeseries":
+            fig = make_subplots(
+                rows=col_count, cols=1,
+                subplot_titles=numeric_cols[:3],
+                vertical_spacing=0.1,
+            )
+            for idx, col in enumerate(numeric_cols[:3], 1):
+                series = df[col]
+                x_vals = df[label_col].astype(str).tolist()
+
+                fig.add_trace(go.Scatter(
+                    x=x_vals, y=series,
+                    mode="lines+markers",
+                    name=col,
+                    line=dict(width=2, color=colors[idx - 1]),
+                ), row=idx, col=1)
+
+                future_y, r2 = predict_trend(series, periods=3)
+                if future_y is not None:
+                    fig.add_trace(go.Scatter(
+                        x=[f"予測{i+1}" for i in range(3)],
+                        y=future_y,
+                        mode="lines+markers",
+                        name=f"{col} 予測（R²={r2}）",
+                        line=dict(dash="dot", color="orange"),
+                    ), row=idx, col=1)
+
+            fig.update_layout(
+                title=f"{filename}（時系列・予測付き）",
+                height=320 * col_count,
+                hovermode="x unified",
+                template="plotly_white",
+            )
+
+        elif graph_type == "heatmap":
+            corr = df[numeric_cols].corr()
+            fig  = go.Figure(data=go.Heatmap(
+                z=corr.values,
+                x=corr.columns.tolist(),
+                y=corr.index.tolist(),
+                colorscale="RdBu",
+                zmid=0,
+                text=corr.round(2).values,
+                texttemplate="%{text}",
+            ))
+            fig.update_layout(
+                title=f"{filename}（相関ヒートマップ）",
+                height=500,
+                template="plotly_white",
+            )
+
+        elif graph_type == "scatter" and len(numeric_cols) >= 2:
+            fig = px.scatter(
+                df,
+                x=numeric_cols[0],
+                y=numeric_cols[1],
+                color=label_col if df[label_col].dtype == object else None,
+                title=f"{filename}（散布図）",
+                template="plotly_white",
+            )
+            fig.update_layout(height=500)
+
+        else:
+            fig = make_subplots(rows=1, cols=col_count, subplot_titles=numeric_cols[:3])
+            for idx, col in enumerate(numeric_cols[:3], 1):
+                series = df[col]
+                fig.add_trace(go.Bar(
+                    x=df[label_col].astype(str),
+                    y=series,
+                    name=col,
+                    marker_color=colors[idx - 1],
+                    text=series.apply(lambda v: f"{v:,.0f}"),
+                    textposition="outside",
+                ), row=1, col=idx)
+
+                future_y, r2 = predict_trend(series, periods=3)
+                if future_y is not None:
+                    fig.add_trace(go.Bar(
+                        x=[f"予測{i+1}" for i in range(3)],
+                        y=future_y,
+                        name=f"{col} 予測（R²={r2}）",
+                        marker_color="orange",
+                        opacity=0.6,
+                    ), row=1, col=idx)
+
+            fig.update_layout(
+                title=filename,
+                height=450,
+                template="plotly_white",
+            )
+
+        return pio.to_json(fig)
+
+    except Exception as e:
+        print(f"[GRAPH] JSON生成エラー: {e}")
         return None

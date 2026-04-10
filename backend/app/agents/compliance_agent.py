@@ -37,10 +37,10 @@ class ComplianceResult:
 
     def to_markdown(self) -> str:
         LEVEL_LABEL = {
-            "safe":     "✅ 問題なし",
-            "caution":  "🟡 注意",
-            "warning":  "🟠 警告",
-            "critical": "🔴 緊急対応が必要",
+            "safe":     "[OK] 問題なし",
+            "caution":  "[注意] 注意",
+            "warning":  "[警告] 警告",
+            "critical": "[緊急] 緊急対応が必要",
         }
         lines = [
             f"## コンプライアンス審査結果",
@@ -60,10 +60,10 @@ class ComplianceResult:
             for i, r in enumerate(self.recommendations, 1):
                 lines.append(f"{i}. {r}")
         if self.requires_expert:
-            lines.append("\n> ⚠️ **本件は社会保険労務士・弁護士への相談を推奨します。**")
+            lines.append("\n> [注意] **本件は社会保険労務士・弁護士への相談を推奨します。**")
         if self.is_certified:
             lines.append(
-                f"\n> ✅ 士業レビュー済み（{self.certified_by} / "
+                f"\n> [OK] 士業レビュー済み（{self.certified_by} / "
                 f"{self.certified_at.strftime('%Y-%m-%d') if self.certified_at else '日時不明'}）"
             )
         return "\n".join(lines)

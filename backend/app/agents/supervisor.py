@@ -78,7 +78,7 @@ class RouteDecision(BaseModel):
     route: Literal[
         "project", "sql", "rag", "fraud", "web",
         "cash_flow", "hr", "file_analysis", "graph",
-        "compliance", "general"
+        "compliance", "subsidy", "alchemy", "syllabus", "general"
     ]
     reason: str
 
@@ -137,10 +137,7 @@ CLEAR_KEYWORDS = {
     ],
     "web": [
         "業界動向", "競合分析", "市場調査",
-        "競合他社", "業界ニュース", "市場トレンド",
-        "補助金", "助成金", "給付金",
-        "ものづくり補助金", "it導入補助金", "デジタル化補助金",
-        "事業再構築補助金", "省力化補助金",
+        "競合他社", "業界ニュース", "市場トレンド"
     ],
     "compliance": [
         "残業代", "未払い", "サービス残業", "36協定", "労働時間",
@@ -151,6 +148,21 @@ CLEAR_KEYWORDS = {
         "就業規則", "雇用契約書", "NDA", "秘密保持契約",
         "個人情報漏洩", "情報流出", "不正アクセス", "GDPR",
         "個人情報保護法",
+    ],
+    "subsidy": [
+        "補助金", "助成金", "給付金",
+        "補助金を探", "助成金を探", "申請書を作", "jgrants",
+        "ものづくり補助金", "it導入補助金", "デジタル化補助金",
+        "事業再構築補助金", "省力化補助金",
+        "キャリアアップ助成金", "人材開発支援助成金", "省力化投資補助金",
+    ],
+    "alchemy": [
+        "ナレッジ", "暗黙知", "形式知", "錬成", "知識を抽出",
+        "ノウハウを", "マニュアル化", "手順書を作", "技術継承",
+    ],
+    "syllabus": [
+        "シラバス", "研修を作", "eラーニング", "カリキュラム",
+        "教材を作", "学習プログラム", "研修プログラム",
     ],
 }
 
@@ -333,6 +345,18 @@ async def execute_agent(state: SupervisorState) -> dict:
         elif route == "graph":
             from app.agents.graph_agent import run_graph_agent
             result = await run_graph_agent(question, session_id)
+        
+        elif route == "subsidy":
+            from app.agents.subsidy_agent import run_subsidy_agent
+            result = await run_subsidy_agent(question, session_id)
+
+        elif route == "alchemy":
+            from app.agents.knwoledge_alchemist_agent import run_knowledge_alchemist_agent
+            result = await run_knowledge_alchemist_agent(question, session_id)
+
+        elif route == "syllabus":
+            from app.agents.syllabus_agent import run_syllabus_agent
+            result = await run_syllabus_agent(question, session_id)
 
         elif route == "compliance":
             from app.agents.compliance_agent import run_compliance_agent
