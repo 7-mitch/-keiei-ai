@@ -1,0 +1,144 @@
+# KEIEI-AI ローカル起動手順
+
+## 毎回の起動手順（コピペで実行）
+
+### ターミナル1：サーバー起動
+
+```powershell
+cd C:\Users\Owner\keiei-ai
+docker-compose up db ollama -d
+cd backend
+$env:DATABASE_URL="postgresql://keiei:keiei_pass@localhost:5432/keiei_ai?sslmode=disable"
+$env:ENVIRONMENT="development"
+Get-ChildItem -Recurse -Filter "__pycache__" | Remove-Item -Recurse -Force
+uvicorn app.main:app --reload
+```
+
+> **`__pycache__`削除について**
+> Pythonはコードを高速化するためにキャッシュファイルを自動生成します。
+> ローカル開発時はこのキャッシュが残ると「コードを修正したのに古い動作のまま」になる場合があります。
+> `--reload`オプションをつけると変更を自動検知して再起動するため、通常はキャッシュ問題が起きにくくなります。
+> **本番環境（AWS）では不要です。** Dockerがクリーンなコンテナをゼロからビルドするのでキャッシュ問題は発生しません。
+
+### ターミナル2：ログインとテスト
+
+```powershell
+cd C:\Users\Owner\keiei-ai\backend
+$response = curl -s -X POST http://localhost:8000/api/auth/login `
+  -H "Content-Type: application/json" `
+  -d '{"email": "nvisio@outlook.jp", "password": "masamichi1975"}' | ConvertFrom-Json
+$token = $response.access_token
+echo $token
+```
+
+---
+
+## 機能別テストコマンド
+
+### 守り機能
+
+```powershell
+# 労務違反チェック
+curl -s -X POST http://localhost:8000/api/compliance/check `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{"question": "残業代を払わずに働かせてもいいですか", "session_id": "test"}'
+
+# ハラスメントチェック
+curl -s -X POST http://localhost:8000/api/compliance/check `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{"question": "パワハラが起きているかもしれません", "session_id": "test"}'
+```
+
+### 攻め機能（チャット経由）
+
+> チャット経由の攻め機能は `message` ではなく `question` フィールドを使います。
+
+```powershell
+# 補助金マッチング
+curl -s -X POST http://localhost:8000/api/chat `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{"question": "IT導入補助金を探しています", "session_id": "test"}'
+
+# ナレッジ錬成
+curl -s -X POST http://localhost:8000/api/chat `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{"question": "梱包作業のノウハウを登録したい。段ボールは底から組む、重いものを下に入れる、テープは十字に貼る", "session_id": "test"}'
+
+# シラバス生成
+curl -s -X POST http://localhost:8000/api/chat `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{"question": "接客マニュアルのeラーニングを作って", "session_id": "test"}'
+```
+
+---
+
+## よくあるエラーと対処法
+
+| エラー | 原因 | 対処法 |
+|---|---|---|
+| `ConnectionRefusedError` | DBが止まっている | `docker-compose up db -d` を実行 |
+| `model 'gemma3:4b' not found` | Ollamaが止まっている | `docker-compose up ollama -d` を実行 |
+| `コードを修正したのに反映されない` | キャッシュが残っている | `Get-ChildItem -Recurse -Filter "__pycache__" | Remove-Item -Recurse -Force` を実行してから `--reload` で再起動 |
+| `Not Found` | サーバーが古い | Ctrl+Cで止めて再起動 |
+| `Invalid salt` | DBのパスワードが壊れている | NeonDBでパスワードハッシュを更新 |
+| `Application startup failed` | 環境変数が未設定 | `$env:DATABASE_URL=...` を実行してから起動 |
+| `8000番ポートが使用中` | 前のサーバーが残っている | `Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000 -State Listen).OwningProcess -Force` を実行 |
+
+---
+
+## 本番環境（AWS）へのデプロイ
+
+```powershell
+cd C:\Users\Owner\keiei-ai
+git add .
+git commit -m "変更内容のメモ"
+git push origin main
+```
+
+GitHubにpushすると**GitHub Actionsが自動でAWSにデプロイ**します。
+キャッシュ削除や再起動は不要です。Dockerが毎回クリーンな状態でビルドします。
+
+デプロイ状況は以下で確認できます。
+```
+https://github.com/7-mitch/-keiei-ai/actions
+```
+
+---
+
+## 重要なURL一覧
+
+| 項目 | URL |
+|---|---|
+| ローカルAPI | http://localhost:8000 |
+| ローカルSwagger | http://localhost:8000/docs |
+| 本番API（AWS） | http://54.199.119.14:8000 |
+| フロントエンド（Vercel） | https://keiei-ai-frontend.vercel.app |
+| GitHub Actions | https://github.com/7-mitch/-keiei-ai/actions |
+| NeonDB | https://console.neon.tech |
+| AWS ECS | https://console.aws.amazon.com/ecs |
+
+---
+
+## Docker管理コマンド
+
+```powershell
+# 状態確認
+docker-compose ps
+
+# DBだけ起動
+docker-compose up db -d
+
+# OllamaとDBを起動
+docker-compose up db ollama -d
+
+# 全部止める
+docker-compose stop
+
+# 全部削除（初期化）
+docker-compose down
+```

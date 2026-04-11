@@ -13,6 +13,7 @@ from app.api import admin
 from app.api import budget
 from app.api import compliance
 from app.api import cash_flow
+from app.api import financing
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
@@ -62,6 +63,7 @@ app.include_router(dpo.router,      prefix="/api/dpo",      tags=["DPOパイプ�
 app.include_router(feedback.router, prefix="/api/feedback", tags=["フィードバック"])
 app.include_router(cash_flow.router, prefix="/api/cash_flow", tags=["資金繰り"])
 app.include_router(compliance.router, prefix="/api/compliance", tags=["コンプライアンス"])
+app.include_router(financing.router, prefix="/api/financing", tags=["融資対策"])
 
 @app.get("/health", tags=["システム"])
 async def health():

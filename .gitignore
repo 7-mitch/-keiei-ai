@@ -97,3 +97,7 @@ app/**/__pycache__/
 
 KEIEI-AI_技術仕様書.md
 Technical_spec.md
+
+__pycache__/
+*.pyc
+backend/-keiei-ai/
