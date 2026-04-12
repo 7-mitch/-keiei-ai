@@ -2,7 +2,7 @@
 web_agent.py — Web収集エージェント（業界別法令・ニュース自動収集 + RAG自動追加）
 機能:
   - 業界別法令サイト自動巡回（厚労省・国交省・経産省等）
-  - 金融ニュース・市場情報収集
+  - 金融ニュース・市場情報収集（Tavily API優先）
   - SNSインサイト収集（Reddit・Zenn・Qiita）
   - LLM要約生成
   - RAGへの自動追加
@@ -106,7 +106,7 @@ REGULATORY_SOURCES = {
     ],
 }
 
-# ===== 金融ニュース =====
+# ===== 金融ニュース（Playwrightフォールバック用）=====
 NEWS_SOURCES = [
     {
         "name":     "日本銀行",
@@ -337,8 +337,126 @@ async def summarize_with_llm(
         return f"収集記事:\n{articles_text}"
 
 
-# ===== 業界別法令収集 =====
+# ===== 金融ニュース収集（Tavily優先・Playwrightフォールバック）=====
+async def collect_news() -> list[dict]:
+    tavily_key = os.getenv("TAVILY_API_KEY", "")
+
+    if tavily_key:
+        try:
+            from tavily import TavilyClient
+            client      = TavilyClient(api_key=tavily_key)
+            all_results = []
+
+            queries = [
+                "日本銀行 金融政策 最新",
+                "金融庁 規制 最新ニュース",
+                "日本経済 市場 最新情報",
+            ]
+
+            for query in queries:
+                results = client.search(
+                    query        = query,
+                    search_depth = "basic",
+                    max_results  = 5,
+                )
+                for r in results.get("results", []):
+                    all_results.append({
+                        "title":  r.get("title", ""),
+                        "url":    r.get("url", ""),
+                        "source": query,
+                        "type":   "financial_news",
+                    })
+                    await save_to_db(
+                        url       = r.get("url", ""),
+                        status    = "success",
+                        data_type = "financial_news",
+                        content   = r.get("content", ""),
+                    )
+
+            print(f"[WEB] Tavily収集完了: {len(all_results)}件")
+            return all_results
+
+        except Exception as e:
+            print(f"[WEB] Tavily収集エラー、Playwrightにフォールバック: {e}")
+
+    all_results = []
+    for source in NEWS_SOURCES:
+        print(f"[WEB] ニュース収集: {source['name']}")
+        articles = await scrape_page(source["url"], source["selector"])
+
+        if articles:
+            await save_to_db(
+                url       = source["url"],
+                status    = "success",
+                data_type = source["type"],
+                content   = json.dumps(articles, ensure_ascii=False),
+            )
+            all_results.extend([
+                {**a, "source": source["name"], "type": source["type"]}
+                for a in articles
+            ])
+            print(f"[WEB] {source['name']}: {len(articles)}件収集")
+
+    return all_results
+
+
+# ===== 業界別法令収集（Tavily優先・Playwrightフォールバック）=====
 async def collect_regulatory(industry: str) -> list[dict]:
+    tavily_key = os.getenv("TAVILY_API_KEY", "")
+
+    if tavily_key:
+        try:
+            from tavily import TavilyClient
+            client      = TavilyClient(api_key=tavily_key)
+            all_results = []
+
+            industry_queries = {
+                "介護": ["介護保険 最新情報 厚生労働省", "介護報酬 改定 最新"],
+                "医療": ["診療報酬 改定 最新 厚生労働省", "医療制度 最新情報"],
+                "建設": ["建設業法 最新 国土交通省", "建築基準法 改正 最新"],
+                "製造": ["製造業 規制 最新 経済産業省", "カーボンニュートラル 製造業"],
+                "法律": ["法令改正 最新 e-Gov", "企業法務 最新情報"],
+                "経理": ["インボイス制度 最新情報 国税庁", "電子帳簿保存法 最新"],
+            }
+
+            queries = industry_queries.get(industry, [f"{industry} 法令 最新情報"])
+
+            data_type_map = {
+                "介護": "regulatory_care",
+                "医療": "regulatory_medical",
+                "建設": "regulatory_construction",
+                "製造": "regulatory_manufacturing",
+                "法律": "regulatory_legal",
+                "経理": "regulatory_accounting",
+            }
+
+            for query in queries:
+                results = client.search(
+                    query        = query,
+                    search_depth = "basic",
+                    max_results  = 5,
+                )
+                for r in results.get("results", []):
+                    all_results.append({
+                        "title":  r.get("title", ""),
+                        "url":    r.get("url", ""),
+                        "source": query,
+                        "type":   data_type_map.get(industry, "regulatory_news"),
+                    })
+                    await save_to_db(
+                        url       = r.get("url", ""),
+                        status    = "success",
+                        data_type = data_type_map.get(industry, "regulatory_news"),
+                        content   = r.get("content", ""),
+                    )
+
+            print(f"[WEB] {industry} Tavily収集完了: {len(all_results)}件")
+            return all_results
+
+        except Exception as e:
+            print(f"[WEB] {industry} Tavily収集エラー: {e}")
+
+    # ===== Playwrightフォールバック =====
     sources     = REGULATORY_SOURCES.get(industry, [])
     all_results = []
 
@@ -365,29 +483,6 @@ async def collect_regulatory(industry: str) -> list[dict]:
                 for a in articles
             ])
             print(f"[WEB] {source['name']}: {len(articles)}件収集・RAG追加")
-
-    return all_results
-
-
-# ===== 金融ニュース収集 =====
-async def collect_news() -> list[dict]:
-    all_results = []
-    for source in NEWS_SOURCES:
-        print(f"[WEB] ニュース収集: {source['name']}")
-        articles = await scrape_page(source["url"], source["selector"])
-
-        if articles:
-            await save_to_db(
-                url       = source["url"],
-                status    = "success",
-                data_type = source["type"],
-                content   = json.dumps(articles, ensure_ascii=False),
-            )
-            all_results.extend([
-                {**a, "source": source["name"], "type": source["type"]}
-                for a in articles
-            ])
-            print(f"[WEB] {source['name']}: {len(articles)}件収集")
 
     return all_results
 
@@ -436,7 +531,6 @@ async def daily_collection() -> dict:
 async def run_web_agent(question: str, session_id: str) -> str:
     q = question.lower()
 
-    # ===== Tavily APIで検索（優先）=====
     tavily_key = os.getenv("TAVILY_API_KEY", "")
     if tavily_key:
         try:
@@ -478,7 +572,6 @@ async def run_web_agent(question: str, session_id: str) -> str:
         except Exception as e:
             print(f"[WEB] Tavily検索エラー: {e}")
 
-    # ===== URL指定収集 =====
     if "http" in q:
         urls = re.findall(r'https?://[^\s]+', question)
         if urls:
@@ -490,13 +583,11 @@ async def run_web_agent(question: str, session_id: str) -> str:
                 )
             return f"【{result['title']}】\n{result['content'][:500]}..."
 
-    # ===== SNSインサイト収集 =====
     if any(kw in q for kw in ["sns", "insight", "インサイト", "トレンド", "reddit", "zenn", "qiita"]):
         articles = await collect_sns_insights()
         summary  = await summarize_with_llm(articles, context="AIエンジニア向け")
         return f"【AIトレンドインサイト】\n{summary}"
 
-    # ===== 業界別法令収集 =====
     from app.agents.rag_agent import INDUSTRY_KEYWORDS
     for industry, keywords in INDUSTRY_KEYWORDS.items():
         if any(kw in q for kw in keywords):
@@ -508,7 +599,6 @@ async def run_web_agent(question: str, session_id: str) -> str:
             )
             return f"【{industry}業界 最新法令・規制情報】\n{summary}"
 
-    # ===== 通常の金融ニュース収集 =====
     articles = await collect_news()
     if not articles:
         return "現在ニュースを収集できませんでした。"
@@ -529,5 +619,3 @@ if __name__ == "__main__":
         print(result)
 
     asyncio.run(main())
-
-

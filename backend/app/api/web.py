@@ -3,13 +3,16 @@
 """
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from app.agents.web_agent import collect_news, collect_url
+from app.agents.web_agent import collect_news, collect_url, collect_regulatory
 from app.core.security import get_current_user
 
 router = APIRouter()
 
 class CollectUrlRequest(BaseModel):
     url: str
+
+class CollectIndustryRequest(BaseModel):
+    industry: str
 
 @router.post("/collect")
 async def collect(
@@ -19,6 +22,18 @@ async def collect(
     results = await collect_news()
     return {
         "message": f"{len(results)}件収集しました",
+        "results": results[:10],
+    }
+
+@router.post("/collect/industry")
+async def collect_industry(
+    req:  CollectIndustryRequest,
+    user: dict = Depends(get_current_user),
+):
+    """業界別法令を収集する"""
+    results = await collect_regulatory(req.industry)
+    return {
+        "message": f"{req.industry}：{len(results)}件収集しました",
         "results": results[:10],
     }
 
